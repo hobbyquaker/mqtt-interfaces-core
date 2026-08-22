@@ -22,42 +22,52 @@ the convention itself is specified in
   Raspberry-class machines; `engines: node >= 20`.
 - npm package `mqtt-interfaces-core`, unscoped (OQ-15).
 
+## Decisions (local)
+
+| ID  | Decision                                                                                                                                                                                                                                                                                       |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C-1 | **Order flipped (2026-08-22)**: the core lib is extracted from lgtv2mqtt 2.0 (the most modern adapter: ESM, journald logger, tests); lgtv2mqtt 3.0 is the reference adapter, lgsb2mqtt 2.0 second. Supersedes the lgsb-first order of the master roadmap Phase 2.                              |
+| C-2 | **API shape**: `createAdapter()` façade owning MQTT/connected/status/info/maintenance/discovery/shutdown; every module (`log`, `payload`, `config`, `hadiscovery`, `install`) also exported on its own.                                                                                        |
+| C-3 | **`<name>/info` fields**: `name, version, spec, node, host, pid, started` (ISO; uptime is derivable), `maintenance` (bool) + adapter extras (e.g. `tv`).                                                                                                                                       |
+| C-4 | **Config env handling** is done by the core, not yargs `.env()` (which only reads `process.env`): env values become typed defaults, so CLI > env > defaults holds and the unprefixed `MQTT_*` fallback works. `--config-schema` is handled before parsing so required options do not block it. |
+| C-5 | **Restart semantics (OQ-18)**: `maintenance/set/restart` = graceful shutdown + `exit 0`; the template unit uses `Restart=always` (not `on-failure`) so systemd brings it back; Docker needs `--restart unless-stopped`.                                                                        |
+
 ## Scope (Phase 2 of the master roadmap)
 
-- [ ] **MQTT client wrapper**: connect with LWT, `connected` 0/1/2 lifecycle,
+- [x] **MQTT client wrapper**: connect with LWT, `connected` 0/1/2 lifecycle,
       reconnect, graceful shutdown (SIGINT/SIGTERM → `connected 0`, disconnect).
-- [ ] **pub/sub helpers** implementing the retain rules (persistent state
+- [x] **pub/sub helpers** implementing the retain rules (persistent state
       retained, events not) and plain-vs-`{val, ts, lc}` payloads
       (`--json-payloads`, D-3); incoming `set` accepts plain and `{val}`.
-- [ ] **Config loader**: yargs-based CLI + `<ADAPTER>_*` env vars, precedence
+- [x] **Config loader**: yargs-based CLI + `<ADAPTER>_*` env vars, precedence
       CLI > env > defaults, no config file (D-7); canonical option set
       (`--mqtt-url`/`-u`/`--url`, `--name`, `--verbosity`, `--json-payloads`,
       `--ha-discovery`, `--ha-prefix`, `--publish-raw`, `--no-maintenance`, …);
       shared broker variables `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`,
       `MQTT_CLIENT_ID_PREFIX`, `MQTT_TLS_CA` as fallback (B-3); emits a JSON
       Schema of the options for the fleet manager.
-- [ ] **Logger** (replaces yalm): levels, `mqtt >`/`mqtt <` and
+- [x] **Logger** (replaces yalm): levels, `mqtt >`/`mqtt <` and
       `<device> >`/`<device> <` prefixes, journald detection (`JOURNAL_STREAM`
       → `<N>` priority prefixes, no own timestamp), `<ADAPTER>_LOG_FORMAT`
       override, runtime level change. Severity rules from the Phase 1 logging
       section (unreachable device = `warn`, `error` only for things needing a
       human; never swallow device errors; dedupe repeated connection errors;
       attempts at `debug`, outcomes at `warn`).
-- [ ] **Introspection**: `<name>/info` retained JSON (adapter, version, node,
+- [x] **Introspection**: `<name>/info` retained JSON (adapter, version, node,
       uptime, host) and maintenance topics `maintenance/set/loglevel`,
       `maintenance/set/restart` (D-9, OQ-18: `process.exit(0)` + supervisor).
-- [ ] **Home Assistant discovery publisher**: device-based
-      (`homeassistant/device/<id>/config`), on by default (D-5),
-      `--no-ha-discovery`, clear option, availability via `<name>/connected`
-      with `payload_available: "2"`; pure builder from an adapter-supplied
-      entity map (model: lgsb2mqtt `lib/hadiscovery.js`). Validation against
-      HA's schema in CI — approach to decide here (B-8).
+- [~] **Home Assistant discovery publisher** (scaffold + helpers done; CI validation open): device-based
+  (`homeassistant/device/<id>/config`), on by default (D-5),
+  `--no-ha-discovery`, clear option, availability via `<name>/connected`
+  with `payload_available: "2"`; pure builder from an adapter-supplied
+  entity map (model: lgsb2mqtt `lib/hadiscovery.js`). Validation against
+  HA's schema in CI — approach to decide here (B-8).
 - [ ] **Device discovery** (B-2): the scanning mechanics exactly once —
       mDNS/SSDP listeners, subnet TCP probes, OUI lookup, rate limiting,
       timeouts — driven by the adapter's declarative hint and `probe(ip)`;
       provides `--discover [--json] [--timeout]` and `--address auto`
       (refuses to start on multiple matches).
-- [ ] **systemd `--install`/`--uninstall`**: template unit
+- [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared
       broker env file (B-3); parameterised by adapter name (today duplicated
@@ -82,16 +92,20 @@ the convention itself is specified in
 
 ## Order of work
 
-1. Spec 2.x draft exists in the umbrella repo (Phase 1) — the lib follows it,
-   not the other way round.
-2. Extract config loader, MQTT wrapper, payload helpers, logger from
-   lgsb2mqtt/lgtv2mqtt; publish 0.x.
-3. Rewrite **lgsb2mqtt** on top of it as the reference adapter, then
-   lgtv2mqtt (Phase 3 order after that by usage/value).
-4. HA discovery publisher + CI validation (B-8).
-5. Device discovery module with lgsb2mqtt (`_googlecast._tcp` + port 9741)
+1. ~~Extract config loader, MQTT wrapper, payload helpers, logger, discovery
+   scaffold and installer from lgtv2mqtt 2.0~~ — done 2026-08-22 (0.1.0, 49 unit
+   tests), see C-1.
+2. **lgtv2mqtt 3.0** on top of it as the reference adapter (same topics as 2.0 +
+   maintenance topics); this is where the API gets its final shape. Publish
+   core 0.1.0 to npm once 3.0 runs against the real TV.
+3. **lgsb2mqtt 2.0** (ESM, drops yalm, gains info/maintenance for free), then the
+   rest of the fleet by usage/value (Phase 3).
+4. Spec 2.x in the umbrella repo is written _from_ what the core does (the
+   lib and the two pilots are the living draft).
+5. HA discovery publisher + CI validation (B-8).
+6. Device discovery module with lgsb2mqtt (`_googlecast._tcp` + port 9741)
    and lgtv2mqtt (SSDP webOS ST) as the two pilots (B-2).
-6. `--install` module, shared tooling package.
+7. `--install` module, shared tooling package.
 
 ## Open questions (local)
 

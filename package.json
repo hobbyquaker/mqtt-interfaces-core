@@ -1,8 +1,14 @@
 {
   "name": "mqtt-interfaces-core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Core library for writing xyz2mqtt interfaces following the mqtt-smarthome convention",
-  "keywords": ["mqtt", "mqtt-smarthome", "smarthome", "home-automation"],
+  "keywords": [
+    "mqtt",
+    "mqtt-smarthome",
+    "smarthome",
+    "home-automation",
+    "home-assistant"
+  ],
   "author": "Sebastian 'Hobbyquaker' Raff <hobbyquaker@gmail.com>",
   "license": "MIT",
   "repository": {
@@ -13,8 +19,37 @@
   "bugs": "https://github.com/hobbyquaker/mqtt-interfaces-core/issues",
   "type": "module",
   "main": "index.js",
-  "files": ["index.js"],
+  "exports": {
+    ".": "./index.js",
+    "./log": "./lib/log.js",
+    "./payload": "./lib/payload.js",
+    "./config": "./lib/config.js",
+    "./adapter": "./lib/adapter.js",
+    "./hadiscovery": "./lib/hadiscovery.js",
+    "./install": "./lib/install.js"
+  },
+  "files": [
+    "index.js",
+    "lib/"
+  ],
   "engines": {
-    "node": ">=20"
+    "node": "^20.19 || ^22.12 || >=24"
+  },
+  "scripts": {
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write . && eslint --fix .",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "dependencies": {
+    "mqtt": "^5.5.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.0.0"
   }
 }
