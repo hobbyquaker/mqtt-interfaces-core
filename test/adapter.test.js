@@ -144,15 +144,19 @@ describe('lifecycle', () => {
         assert.ok(p.ts && p.lc);
     });
 
-    test('discovery trigger re-publishes, --no-ha-discovery clears', () => {
-        const {client, adapter} = setup();
+    test('discovery triggers are coalesced into one re-publish, --no-ha-discovery clears', async () => {
+        const {client, adapter} = setup({discoveryDelay: 10});
         client.emit('connect');
         client.published.length = 0;
         adapter.pubStatus('volume', 1);
-        assert.equal(client.last('homeassistant/device/foo2mqtt_foo/config'), undefined);
         adapter.pubStatus('model', 'X1');
-        const payload = JSON.parse(client.last('homeassistant/device/foo2mqtt_foo/config').payload);
-        assert.equal(payload.dev.mdl, 'X1');
+        adapter.pubStatus('model', 'X2');
+        const topic = 'homeassistant/device/foo2mqtt_foo/config';
+        assert.equal(client.last(topic), undefined);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        const hits = client.published.filter((p) => p.topic === topic);
+        assert.equal(hits.length, 1);
+        assert.equal(JSON.parse(hits[0].payload).dev.mdl, 'X2');
 
         const off = setup({}, {haDiscovery: false});
         off.client.emit('connect');
