@@ -97,7 +97,13 @@ Every module is also importable on its own (`mqtt-interfaces-core/log`, `/payloa
 
 `discovery()` returns one device block, or an array of them for a bridge that sees several physical
 devices (one `config` topic per device, `device.via_device` pointing at the bridge; devices missing
-from a later result are cleared).
+from a later result are cleared). A device block may carry its own `availability` array (instead of
+the default `<name>/connected` entry) so that one device of a bridge can be shown as unavailable
+while the bridge itself is fine; with more than one entry `avty_mode: 'all'` is added.
+
+`pubStatus(item, value, {retain: false})` publishes an event (a spoken command, a progress tick):
+it is not re-published after an mqtt reconnect, but the value stays readable via `get()`.
+`clearStatus(item)` forgets an item and clears its retained payload.
 
 Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
 `--mqtt-client-id-prefix`, `--mqtt-tls-ca`, `--name/-n`, `--json-payloads`, `--ha-discovery`,

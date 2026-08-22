@@ -126,6 +126,34 @@ describe('lifecycle', () => {
         assert.equal(client.last('foo/status/volume').payload, '7');
     });
 
+    test('reconnect does not re-publish non-retained events', () => {
+        const {client, adapter} = setup();
+        client.emit('connect');
+        adapter.pubStatus('volume', 7);
+        adapter.pubStatus('last_voice_command', 'play swr3', {retain: false});
+        assert.equal(client.last('foo/status/last_voice_command').options.retain, false);
+        client.emit('close');
+        const n = client.published.length;
+        client.emit('connect');
+        const after = client.published.slice(n);
+        assert.ok(after.some((m) => m.topic === 'foo/status/volume'));
+        assert.equal(
+            after.some((m) => m.topic === 'foo/status/last_voice_command'),
+            false,
+        );
+    });
+
+    test('clearStatus forgets an item and clears its retained payload', () => {
+        const {client, adapter} = setup();
+        client.emit('connect');
+        adapter.pubStatus('kitchen/volume', 7);
+        assert.equal(adapter.clearStatus('kitchen/volume'), true);
+        assert.equal(client.last('foo/status/kitchen/volume').payload, '');
+        assert.equal(client.last('foo/status/kitchen/volume').options.retain, true);
+        assert.equal(adapter.get('kitchen/volume'), undefined);
+        assert.equal(adapter.clearStatus('kitchen/volume'), false);
+    });
+
     test('reconnect re-publishes status', () => {
         const {client, adapter} = setup();
         client.emit('connect');

@@ -108,6 +108,19 @@ the convention itself is specified in
    and lgtv2mqtt (SSDP webOS ST) as the two pilots (B-2).
 7. `--install` module, shared tooling package.
 
+## 0.3.0 — needed by alexa-remote-mqtt 2.0 (done)
+
+Specified in the [alexa-remote-mqtt ROADMAP](https://github.com/hobbyquaker/alexa-remote-mqtt/blob/master/ROADMAP.md)
+§1.2 (G-1 … G-3); the first multi-device bridge on the core.
+
+- [x] **G-1** `pubStatus(item, v, {retain: false})` items must not be re-published retained after
+      an MQTT reconnect: `StatusTracker` remembers `retain` per item, `republishStatus()` skips
+      non-retained items.
+- [x] **G-2** discovery device block accepts `availability` (array, replaces the default
+      `<name>/connected` entry; `availability_mode: 'all'` is added when there is more than one) —
+      per-device availability for bridges.
+- [x] **G-3** `adapter.clearStatus(item)`: empty retained publish + `status.delete()`.
+
 ## Open questions (local)
 
 - Single package or `mqtt-interfaces-core` + separate `eslint-config`?

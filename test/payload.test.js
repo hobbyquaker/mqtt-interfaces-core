@@ -89,6 +89,20 @@ describe('StatusTracker', () => {
         assert.deepEqual(s.update('mute', false).payload, {val: false, ts: 3000, lc: 3000});
     });
 
+    test('retain flag is remembered per item', () => {
+        const s = new StatusTracker();
+        s.update('volume', 5);
+        s.update('last_voice_command', 'play swr3', {retain: false});
+        assert.equal(s.isRetained('volume'), true);
+        assert.equal(s.isRetained('last_voice_command'), false);
+        assert.equal(s.isRetained('unknown'), false);
+        // the value stays available for discovery / get()
+        assert.equal(s.get('last_voice_command'), 'play swr3');
+        // a later retained publish of the same item wins
+        s.update('last_voice_command', 'stop');
+        assert.equal(s.isRetained('last_voice_command'), true);
+    });
+
     test('objects compare by value', () => {
         const s = new StatusTracker();
         s.update('list', [{id: 'a'}]);

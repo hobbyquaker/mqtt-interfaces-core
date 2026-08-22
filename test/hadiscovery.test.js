@@ -99,3 +99,31 @@ describe('devicePayload', () => {
         assert.deepEqual(payload.dev.ids, ['foo2mqtt_uuid1']);
     });
 });
+
+describe('per-device availability (bridges)', () => {
+    const components = {v: entity({id: 'foo2mqtt_x', name: 'foo', item: 'x/volume', platform: 'number', label: 'V'})};
+
+    test('availability replaces the default and adds avty_mode all', () => {
+        const avty = [
+            ...availability('foo'),
+            {t: 'foo/status/kitchen/connected', avty_tpl: "{{ 'online' if value_json.val else 'offline' }}"},
+        ];
+        const {payload} = devicePayload({pkg, name: 'foo', id: 'foo2mqtt_G090', components, availability: avty});
+        assert.deepEqual(payload.avty, avty);
+        assert.equal(payload.avty_mode, 'all');
+    });
+
+    test('a single entry needs no mode, an explicit mode wins', () => {
+        const one = devicePayload({pkg, name: 'foo', components, availability: availability('foo', 1)});
+        assert.equal(one.payload.avty_mode, undefined);
+        assert.match(one.payload.avty[0].avty_tpl, />= 1/);
+        const forced = devicePayload({pkg, name: 'foo', components, availabilityMode: 'any'});
+        assert.equal(forced.payload.avty_mode, 'any');
+    });
+
+    test('without availability the default from connected is used', () => {
+        const {payload} = devicePayload({pkg, name: 'foo', components, availability: []});
+        assert.deepEqual(payload.avty, availability('foo'));
+        assert.equal(payload.avty_mode, undefined);
+    });
+});

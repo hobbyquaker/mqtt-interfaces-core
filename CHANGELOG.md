@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0
+
+Needed by the first multi-device bridge on the core (alexa-remote-mqtt 2.0).
+
+### Added
+
+- `devicePayload()` / a `discovery()` device block accept `availability` (and `availabilityMode`):
+  the default `<name>/connected` entry can be replaced, e.g. by the bridge availability plus a
+  per-device online topic, so a single device behind a bridge can be unavailable on its own.
+  `avty_mode: 'all'` is added automatically for more than one entry.
+- `adapter.clearStatus(item)`: forget an item and clear its retained payload (a device that
+  disappeared).
+- `StatusTracker.isRetained(item)`.
+
+### Fixed
+
+- Items published with `{retain: false}` are no longer re-published **retained** after an mqtt
+  reconnect: `StatusTracker` remembers the retain flag per item and `republishStatus()` skips
+  events. Their last value stays available for `get()` and discovery.
+
 ## 0.2.0
 
 ### Breaking
