@@ -162,6 +162,49 @@ describe('lifecycle', () => {
         off.client.emit('connect');
         assert.equal(off.client.last('homeassistant/device/foo2mqtt_foo/config').payload, '');
     });
+
+    test('discovery may return several devices; vanished ones are cleared', () => {
+        let devices = ['a', 'b'];
+        const {client, adapter} = setup({
+            discovery: () => [
+                {device: {mf: 'ACME'}, components: {}},
+                ...devices.map((d) => ({
+                    id: `foo2mqtt_foo_${d}`,
+                    device: {name: d, via_device: 'foo2mqtt_foo'},
+                    components: {
+                        t: entity({
+                            id: `foo2mqtt_foo_${d}`,
+                            name: 'foo',
+                            item: `${d}/t`,
+                            platform: 'sensor',
+                            label: 't',
+                        }),
+                    },
+                })),
+            ],
+        });
+        client.emit('connect');
+        const bridge = JSON.parse(client.last('homeassistant/device/foo2mqtt_foo/config').payload);
+        assert.deepEqual(bridge.dev, {ids: ['foo2mqtt_foo'], name: 'foo', mf: 'ACME'});
+        const a = JSON.parse(client.last('homeassistant/device/foo2mqtt_foo_a/config').payload);
+        assert.deepEqual(a.dev, {ids: ['foo2mqtt_foo_a'], name: 'a', via_device: 'foo2mqtt_foo'});
+        assert.equal(a.cmps.t.stat_t, 'foo/status/a/t');
+        assert.ok(client.last('homeassistant/device/foo2mqtt_foo_b/config').payload.length > 0);
+
+        devices = ['a'];
+        client.published.length = 0;
+        adapter.markDiscoveryDirty();
+        adapter.publishDiscovery();
+        assert.equal(client.last('homeassistant/device/foo2mqtt_foo_b/config').payload, '');
+        assert.ok(client.last('homeassistant/device/foo2mqtt_foo_a/config').payload.length > 0);
+
+        // --no-ha-discovery at runtime clears everything that was announced
+        adapter.config.haDiscovery = false;
+        client.published.length = 0;
+        adapter.publishDiscovery();
+        assert.equal(client.last('homeassistant/device/foo2mqtt_foo/config').payload, '');
+        assert.equal(client.last('homeassistant/device/foo2mqtt_foo_a/config').payload, '');
+    });
 });
 
 describe('incoming', () => {

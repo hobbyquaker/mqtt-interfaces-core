@@ -35,15 +35,18 @@ describe('entity', () => {
             uniq_id: 'foo2mqtt_foo_volume',
             name: 'Volume',
             stat_t: 'foo/status/volume',
+            val_tpl: '{{ value_json.val }}',
             cmd_t: 'foo/set/volume',
             ic: 'mdi:volume-high',
             min: 0,
             max: 100,
         });
     });
-    test('json payloads add a value template, extra can override it', () => {
+    test('json payloads (default) add a value template, plain payloads none, extra can override it', () => {
         const e = entity({...base, item: 'mute', platform: 'switch', label: 'Mute', jsonPayloads: true});
         assert.equal(e.val_tpl, '{{ value_json.val }}');
+        const plain = entity({...base, item: 'mute', platform: 'switch', label: 'Mute', jsonPayloads: false});
+        assert.equal(plain.val_tpl, undefined);
         const e2 = entity({
             ...base,
             item: 'mute',

@@ -22,7 +22,7 @@ describe('parseConfig', () => {
         assert.equal(c.mqttUrl, 'mqtt://localhost');
         assert.equal(c.haDiscovery, true);
         assert.equal(c.maintenance, true);
-        assert.equal(c.jsonPayloads, false);
+        assert.equal(c.jsonPayloads, true);
         assert.equal(c.verbosity, 'info');
         assert.equal(c.$envPrefix, 'FOO2MQTT');
         assert.ok(c.$options.address);

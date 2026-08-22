@@ -9,6 +9,7 @@ const installer = createInstaller({
     description: 'foo2mqtt %i - Foo to MQTT bridge',
     documentation: 'https://github.com/x/foo2mqtt',
     environment: {FOO_KEY_DIR: '%S/foo2mqtt/%i'},
+    serviceExtra: ['SupplementaryGroups=dialout'],
 });
 
 describe('envFile', () => {
@@ -71,6 +72,7 @@ describe('unitFile', () => {
         assert.match(unit, /^EnvironmentFile=\/etc\/foo2mqtt\/%i\.env$/m);
         assert.match(unit, /^Environment=FOO2MQTT_NAME=%i$/m);
         assert.match(unit, /^Environment=FOO_KEY_DIR=%S\/foo2mqtt\/%i$/m);
+        assert.match(unit, /^SupplementaryGroups=dialout$/m);
         assert.match(unit, /^StateDirectory=foo2mqtt\/%i$/m);
         assert.match(unit, /^User=foo2mqtt$/m);
         assert.match(unit, /^SyslogIdentifier=foo2mqtt@%i$/m);

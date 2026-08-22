@@ -11,7 +11,7 @@ are ported.** See [ROADMAP.md](ROADMAP.md).
 ## What you get
 
 - **`createAdapter()`** — MQTT connection with LWT, `<name>/connected` `0`/`1`/`2`, retained
-  `status/<item>` (plain or `{val, ts, lc}` with `--json-payloads`), `set/<item>` dispatch with
+  `status/<item>` (`{val, ts, lc}` JSON, or plain values with `--no-json-payloads`), `set/<item>` dispatch with
   plain and `{val}` payloads, status re-publish after reconnect, `<name>/info`,
   `maintenance/set/loglevel` + `restart`, Home Assistant device discovery (re)publishing,
   graceful shutdown on SIGINT/SIGTERM.
@@ -88,12 +88,16 @@ Every module is also importable on its own (`mqtt-interfaces-core/log`, `/payloa
 | topic                             | retained | notes                                                             |
 | --------------------------------- | -------- | ----------------------------------------------------------------- |
 | `<name>/connected`                | yes      | `0` LWT/shutdown, `1` mqtt only, `2` mqtt + device                |
-| `<name>/status/<item>`            | yes      | plain value, or `{val, ts, lc}` with `--json-payloads`            |
+| `<name>/status/<item>`            | yes      | `{val, ts, lc}` JSON, or plain value with `--no-json-payloads`    |
 | `<name>/set/<item>[/...]`         | —        | plain value or `{"val": ...}`; handled by the adapter's `onSet`   |
 | `<name>/info`                     | yes      | `name, version, spec, node, host, pid, started, maintenance, ...` |
 | `<name>/maintenance/set/loglevel` | —        | `error`/`warn`/`info`/`debug`; `--no-maintenance` disables        |
 | `<name>/maintenance/set/restart`  | —        | graceful shutdown + exit 0; the supervisor restarts the process   |
 | `<ha-prefix>/device/<id>/config`  | yes      | HA device discovery, on by default; `--no-ha-discovery` clears it |
+
+`discovery()` returns one device block, or an array of them for a bridge that sees several physical
+devices (one `config` topic per device, `device.via_device` pointing at the bridge; devices missing
+from a later result are cleared).
 
 Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
 `--mqtt-client-id-prefix`, `--mqtt-tls-ca`, `--name/-n`, `--json-payloads`, `--ha-discovery`,

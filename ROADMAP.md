@@ -37,8 +37,8 @@ the convention itself is specified in
 - [x] **MQTT client wrapper**: connect with LWT, `connected` 0/1/2 lifecycle,
       reconnect, graceful shutdown (SIGINT/SIGTERM → `connected 0`, disconnect).
 - [x] **pub/sub helpers** implementing the retain rules (persistent state
-      retained, events not) and plain-vs-`{val, ts, lc}` payloads
-      (`--json-payloads`, D-3); incoming `set` accepts plain and `{val}`.
+      retained, events not) and `{val, ts, lc}`-vs-plain payloads
+      (JSON by default, `--no-json-payloads`; D-3 revised 2026-08-22); incoming `set` accepts plain and `{val}`.
 - [x] **Config loader**: yargs-based CLI + `<ADAPTER>_*` env vars, precedence
       CLI > env > defaults, no config file (D-7); canonical option set
       (`--mqtt-url`/`-u`/`--url`, `--name`, `--verbosity`, `--json-payloads`,
@@ -58,7 +58,8 @@ the convention itself is specified in
       `maintenance/set/restart` (D-9, OQ-18: `process.exit(0)` + supervisor).
 - [~] **Home Assistant discovery publisher** (scaffold + helpers done; CI validation open): device-based
   (`homeassistant/device/<id>/config`), on by default (D-5),
-  `--no-ha-discovery`, clear option, availability via `<name>/connected`
+  `--no-ha-discovery`, clear option, one or many devices per adapter (bridges: `via_device`),
+  availability via `<name>/connected`
   with `payload_available: "2"`; pure builder from an adapter-supplied
   entity map (model: lgsb2mqtt `lib/hadiscovery.js`). Validation against
   HA's schema in CI — approach to decide here (B-8).
