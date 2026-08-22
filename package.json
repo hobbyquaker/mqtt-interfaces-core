@@ -1,0 +1,20 @@
+{
+  "name": "mqtt-interfaces-core",
+  "version": "0.0.1",
+  "description": "Core library for writing xyz2mqtt interfaces following the mqtt-smarthome convention",
+  "keywords": ["mqtt", "mqtt-smarthome", "smarthome", "home-automation"],
+  "author": "Sebastian 'Hobbyquaker' Raff <hobbyquaker@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hobbyquaker/mqtt-interfaces-core.git"
+  },
+  "homepage": "https://github.com/hobbyquaker/mqtt-interfaces-core#readme",
+  "bugs": "https://github.com/hobbyquaker/mqtt-interfaces-core/issues",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js"],
+  "engines": {
+    "node": ">=20"
+  }
+}
