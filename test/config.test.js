@@ -54,6 +54,13 @@ describe('parseConfig', () => {
         assert.equal(c2.mqttUrl, 'mqtt://own');
     });
 
+    test('--uninstall does not require the mandatory adapter options', () => {
+        const c = parse(['--uninstall', '-n', 'bar']);
+        assert.equal(c.uninstall, true);
+        assert.equal(c.name, 'bar');
+        assert.equal(c.address, undefined);
+    });
+
     test('--config-schema prints and exits', () => {
         let printed;
         let code;

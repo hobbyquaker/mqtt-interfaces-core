@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+### Fixed
+
+- `--uninstall --name <n>` no longer fails on an adapter's mandatory options (`demandOption`,
+  e.g. a device address): uninstalling needs only the instance name.
+
 ## 0.6.0
 
 ### Added

@@ -221,7 +221,8 @@ What you get and must not redo yourself:
 - `config.<camelCase>` values (`config.pollInterval`), plus `config.$options` and
   `config.$envPrefix`.
 - **`--config-schema`**: a JSON Schema of the instance configuration, one property per option with
-  `x-env`, `enum` for `choices`, `required` for `demandOption`, and:
+  `x-env`, `enum` for `choices`, `required` for `demandOption` (`--uninstall --name <n>` is exempt from
+  mandatory options — it needs only the name), and:
   - `secret: true` → `"x-secret": true` — management UIs mask the value (`--mqtt-password` has it).
     Mark every credential, token, cookie, key.
   - `file: {format, example, schema, describe}` → `"x-file": {…}` — the option holds the path of a
