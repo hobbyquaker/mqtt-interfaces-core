@@ -428,6 +428,9 @@ device`), `device.via_device` pointing at the bridge's id, and optionally its ow
 
 ### 9. Tests, lint, CI, release
 
+- `config.js` parses the command line at import time: a test that imports `OPTIONS` from it must
+  satisfy mandatory options first (`process.env.XYZ2MQTT_ADDRESS = …` before a dynamic
+  `await import('../config.js')`), or the import exits with "Missing required argument".
 - `node --test`, files in `test/*.test.js`. Test the pure modules exhaustively (items, commands,
   discovery model, mapping) and the installer through its `deps`/`exec` hooks; keep the device
   transport out of unit tests. The core is tested the same way (`npm test` here, 60 tests).
