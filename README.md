@@ -16,7 +16,7 @@ are ported.** See [ROADMAP.md](ROADMAP.md).
   `maintenance/set/loglevel` + `restart`, Home Assistant device discovery (re)publishing,
   graceful shutdown on SIGINT/SIGTERM.
 - **`parseConfig()`** — yargs CLI with the canonical shared option set plus your own options,
-  `<ADAPTER>_*` env vars, unprefixed `MQTT_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD`/... fallback,
+  `<ADAPTER>_*` env vars, unprefixed `MQTT_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD`/`MQTT_TLS_CA` fallback,
   `--config-schema` (JSON Schema of all options, with `x-env` / `x-secret`, for management UIs).
 - **`createLogger()`** — levels, journald detection (`<N>` priority prefixes, no own timestamp
   under systemd), `<ADAPTER>_LOG_FORMAT=journal|text`, runtime level changes.

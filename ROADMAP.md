@@ -44,7 +44,7 @@ the convention itself is specified in
       (`--mqtt-url`/`-u`/`--url`, `--name`, `--verbosity`, `--json-payloads`,
       `--ha-discovery`, `--ha-prefix`, `--publish-raw`, `--no-maintenance`, …);
       shared broker variables `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`,
-      `MQTT_CLIENT_ID_PREFIX`, `MQTT_TLS_CA` as fallback (B-3); emits a JSON
+      `MQTT_TLS_CA` as fallback (B-3; the client id prefix is per instance, 0.5.0); emits a JSON
       Schema of the options (`x-env`, `x-secret`, `x-adapter`) for management UIs.
 - [x] **Logger** (replaces yalm): levels, `mqtt >`/`mqtt <` and
       `<device> >`/`<device> <` prefixes, journald detection (`JOURNAL_STREAM`

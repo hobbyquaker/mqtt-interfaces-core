@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+### Breaking
+
+- The unprefixed `MQTT_CLIENT_ID_PREFIX` is no longer read as a shared fallback: a client id
+  prefix is specific to an adapter instance, not to a host. Use
+  `<ADAPTER>_MQTT_CLIENT_ID_PREFIX` (or `--mqtt-client-id-prefix`) per instance. The shared
+  `/etc/mqtt-interfaces/broker.env` holds `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` and
+  `MQTT_TLS_CA`.
+
 ## 0.4.0
 
 Companion release for she's Services page (management of adapter instances from she instead of a
