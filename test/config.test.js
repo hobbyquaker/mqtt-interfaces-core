@@ -116,6 +116,40 @@ describe('configSchema', () => {
         assert.equal(s.properties['mqtt-url']['x-secret'], undefined);
     });
 
+    test('x-file for options that hold a user-maintained file', () => {
+        const s = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: {
+                ...options,
+                'map-file': {
+                    type: 'string',
+                    describe: 'names',
+                    file: {format: 'json', example: 'example-map.json', schema: 'map.schema.json'},
+                },
+                'key-file': {type: 'string', file: {format: 'nope', describe: 'pairing key'}},
+            },
+            defaults: {},
+        });
+        assert.deepEqual(s.properties['map-file']['x-file'], {
+            format: 'json',
+            example: 'example-map.json',
+            schema: 'map.schema.json',
+        });
+        assert.deepEqual(s.properties['key-file']['x-file'], {format: 'text', describe: 'pairing key'});
+        assert.equal(s.properties.address['x-file'], undefined);
+        const c = parseConfig({
+            pkg,
+            options: {...options, 'map-file': {type: 'string', file: {format: 'json'}}},
+            defaults: {name: 'foo'},
+            argv: ['-a', 'x', '--map-file', 'm.json'],
+            env: {},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.mapFile, 'm.json');
+    });
+
     test('x-adapter carries the package mqttInterfaces field', () => {
         const meta = {spec: '2.0', envPrefix: 'FOO2MQTT', needs: ['serial']};
         const s = configSchema({pkg: {...pkg, mqttInterfaces: meta}, envPrefix: 'FOO2MQTT', options, defaults: {}});

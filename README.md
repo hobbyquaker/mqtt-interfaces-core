@@ -17,7 +17,7 @@ are ported.** See [ROADMAP.md](ROADMAP.md).
   graceful shutdown on SIGINT/SIGTERM.
 - **`parseConfig()`** — yargs CLI with the canonical shared option set plus your own options,
   `<ADAPTER>_*` env vars, unprefixed `MQTT_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD`/`MQTT_TLS_CA` fallback,
-  `--config-schema` (JSON Schema of all options, with `x-env` / `x-secret`, for management UIs).
+  `--config-schema` (JSON Schema of all options, with `x-env` / `x-secret` / `x-file`, for management UIs).
 - **`createLogger()`** — levels, journald detection (`<N>` priority prefixes, no own timestamp
   under systemd), `<ADAPTER>_LOG_FORMAT=journal|text`, runtime level changes.
 - **payload helpers** — `parsePayload`, `toBoolean`, `clampInt`, `toVolume`, `StatusTracker`.
@@ -120,7 +120,19 @@ part of the convention; an adapter has to do three things so that it works well 
 
 - **`--config-schema`** — comes for free from `parseConfig()`. Options that hold credentials get
   `secret: true` in their definition (`--mqtt-password` already has it); they appear as
-  `"x-secret": true` in the schema and are masked in forms.
+  `"x-secret": true` in the schema and are masked in forms. Options that hold the path of a file
+  the user maintains (a map of friendly names, a pairing key) declare it:
+
+  ```js
+  'map-file': {type: 'string', describe: 'JSON file with friendly names',
+               file: {format: 'json', example: 'example-map.json', schema: 'map.schema.json'}},
+  ```
+
+  `format` is `json`, `yaml`, `text` or `binary` (shown, not edited); `example` and `schema`
+  are paths relative to the package root (ship them in `files`). The schema gets
+  `"x-file": {…}` on the property, so a management UI can offer an editor with validation and
+  "create from example".
+
 - **npm keyword `mqtt-interfaces`** in `package.json` — marks the package as an adapter on this
   convention so it shows up in adapter catalogs (npm registry search on the keyword).
 - **`mqttInterfaces` field** in `package.json` — metadata a catalog needs before the package is

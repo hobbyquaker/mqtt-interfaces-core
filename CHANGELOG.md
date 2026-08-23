@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- `file: {format, example, schema, describe}` on an option definition → `"x-file": {…}` in the
+  `--config-schema` output: the option holds the path of a file the user maintains (a map of
+  friendly names, a pairing key). Management UIs (she's Services page) can offer an editor with
+  validation and "create from example" for it.
+
 ## 0.5.0
 
 ### Breaking
