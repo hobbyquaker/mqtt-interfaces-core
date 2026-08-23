@@ -45,7 +45,7 @@ the convention itself is specified in
       `--ha-discovery`, `--ha-prefix`, `--publish-raw`, `--no-maintenance`, …);
       shared broker variables `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`,
       `MQTT_CLIENT_ID_PREFIX`, `MQTT_TLS_CA` as fallback (B-3); emits a JSON
-      Schema of the options for the fleet manager.
+      Schema of the options (`x-env`, `x-secret`, `x-adapter`) for management UIs.
 - [x] **Logger** (replaces yalm): levels, `mqtt >`/`mqtt <` and
       `<device> >`/`<device> <` prefixes, journald detection (`JOURNAL_STREAM`
       → `<N>` priority prefixes, no own timestamp), `<ADAPTER>_LOG_FORMAT`
@@ -120,6 +120,19 @@ Specified in the [alexa-remote-mqtt ROADMAP](https://github.com/hobbyquaker/alex
       `<name>/connected` entry; `availability_mode: 'all'` is added when there is more than one) —
       per-device availability for bridges.
 - [x] **G-3** `adapter.clearStatus(item)`: empty retained publish + `status.delete()`.
+
+## 0.4.0 — companion to she's Services page (done)
+
+The fleet manager of the master roadmap is not built as a standalone app; she manages adapter
+instances instead (design: [she/ROADMAP-SERVICES.md](https://github.com/hobbyquaker/she/blob/main/ROADMAP-SERVICES.md),
+items I4–I8; decision SV-1 there). The core's side of it:
+
+- [x] `secret: true` → `x-secret` in the schema (she SV-10).
+- [x] `mqttInterfaces` package.json field echoed in `x-adapter`; README documents the field and
+      the npm keyword `mqtt-interfaces` (she SV-11 — catalog by npm self-marking, no catalog file).
+- [ ] Adapters: add keyword + field and mark their secrets (lgtv2mqtt, cul2mqtt, alexa-remote-mqtt,
+      lgsb2mqtt) — one line each, next release of each.
+- Nothing is published over MQTT for she's sake (schema stays CLI-only, she SV-6).
 
 ## Open questions (local)
 

@@ -99,7 +99,42 @@ describe('configSchema', () => {
             assert.equal(s.properties[meta], undefined, meta);
         }
         assert.equal(s['x-adapter'].envPrefix, 'FOO2MQTT');
+        assert.equal(s['x-adapter'].mqttInterfaces, undefined);
         assert.equal(s.$id, 'https://github.com/x/foo2mqtt/config.schema.json');
+    });
+
+    test('x-secret for secret options, shared mqtt-password included', () => {
+        const s = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: {...options, token: {type: 'string', describe: 'api token', secret: true}},
+            defaults: {},
+        });
+        assert.equal(s.properties.token['x-secret'], true);
+        assert.equal(s.properties['mqtt-password']['x-secret'], true);
+        assert.equal(s.properties.address['x-secret'], undefined);
+        assert.equal(s.properties['mqtt-url']['x-secret'], undefined);
+    });
+
+    test('x-adapter carries the package mqttInterfaces field', () => {
+        const meta = {spec: '2.0', envPrefix: 'FOO2MQTT', needs: ['serial']};
+        const s = configSchema({pkg: {...pkg, mqttInterfaces: meta}, envPrefix: 'FOO2MQTT', options, defaults: {}});
+        assert.deepEqual(s['x-adapter'].mqttInterfaces, meta);
+    });
+
+    test('secret options parse like any other option', () => {
+        const c = parseConfig({
+            pkg,
+            options: {...options, token: {type: 'string', describe: 'api token', secret: true}},
+            defaults: {name: 'foo'},
+            argv: ['-a', 'x', '--token', 't1'],
+            env: {FOO2MQTT_MQTT_PASSWORD: 'pw'},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.token, 't1');
+        assert.equal(c.mqttPassword, 'pw');
+        assert.equal(c.$options.token.secret, true);
     });
 });
 

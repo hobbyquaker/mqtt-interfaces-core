@@ -17,7 +17,7 @@ are ported.** See [ROADMAP.md](ROADMAP.md).
   graceful shutdown on SIGINT/SIGTERM.
 - **`parseConfig()`** — yargs CLI with the canonical shared option set plus your own options,
   `<ADAPTER>_*` env vars, unprefixed `MQTT_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD`/... fallback,
-  `--config-schema` (JSON Schema for the fleet manager).
+  `--config-schema` (JSON Schema of all options, with `x-env` / `x-secret`, for management UIs).
 - **`createLogger()`** — levels, journald detection (`<N>` priority prefixes, no own timestamp
   under systemd), `<ADAPTER>_LOG_FORMAT=journal|text`, runtime level changes.
 - **payload helpers** — `parsePayload`, `toBoolean`, `clampInt`, `toVolume`, `StatusTracker`.
@@ -109,6 +109,41 @@ Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
 `--mqtt-client-id-prefix`, `--mqtt-tls-ca`, `--name/-n`, `--json-payloads`, `--ha-discovery`,
 `--ha-prefix`, `--maintenance`, `--verbosity/-v`, `--install`, `--uninstall`, `--config-schema`.
 All of them also as `<ADAPTER>_<OPTION>` environment variables.
+
+## Management UIs and fleet membership
+
+There is no standalone fleet manager: [she](https://github.com/hobbyquaker/she) (Services page,
+optional) manages instances of adapters built on this core — inventory from `<name>/info` and
+`<name>/connected`, restart and log level over the maintenance topics, and, via the systemd
+installer layout, config editing, install/uninstall and updates on the host. Everything it needs is
+part of the convention; an adapter has to do three things so that it works well there:
+
+- **`--config-schema`** — comes for free from `parseConfig()`. Options that hold credentials get
+  `secret: true` in their definition (`--mqtt-password` already has it); they appear as
+  `"x-secret": true` in the schema and are masked in forms.
+- **npm keyword `mqtt-interfaces`** in `package.json` — marks the package as an adapter on this
+  convention so it shows up in adapter catalogs (npm registry search on the keyword).
+- **`mqttInterfaces` field** in `package.json` — metadata a catalog needs before the package is
+  installed:
+
+  ```json
+  "keywords": ["mqtt", "mqtt-smarthome", "mqtt-interfaces"],
+  "mqttInterfaces": {
+    "spec": "2.0",
+    "envPrefix": "FOO2MQTT",
+    "needs": ["serial"],
+    "serviceExtra": ["SupplementaryGroups=dialout"]
+  }
+  ```
+
+  `spec` — implemented mqtt-smarthome spec version; `envPrefix` — the `<ADAPTER>_` prefix
+  (default: package name upper-cased, non-alphanumerics → `_`); `needs` — host prerequisites a UI
+  should point out (`serial`, `bluetooth`, `usb`, `network-host`); `serviceExtra` — the extra
+  `[Service]` lines the adapter passes to `createInstaller()`. The whole field is also echoed in
+  the schema's `x-adapter`.
+
+Whether a catalog offers to install a package is the catalog's decision (she gates it by a
+trusted-publishers list) — the keyword only makes an adapter discoverable.
 
 ## License
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+Companion release for she's Services page (management of adapter instances from she instead of a
+standalone fleet manager).
+
+### Added
+
+- `secret: true` on an option definition → `"x-secret": true` in the `--config-schema` output, so
+  management UIs know what to mask. `--mqtt-password` is marked.
+- The schema's `x-adapter` echoes the package's `mqttInterfaces` field.
+- README: the npm keyword `mqtt-interfaces` and the `mqttInterfaces` package.json field
+  (`spec`, `envPrefix`, `needs`, `serviceExtra`) that make an adapter discoverable for catalogs.
+
 ## 0.3.0
 
 Needed by the first multi-device bridge on the core (alexa-remote-mqtt 2.0).
