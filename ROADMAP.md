@@ -134,6 +134,20 @@ items I4–I8; decision SV-1 there). The core's side of it:
       lgsb2mqtt) — one line each, next release of each.
 - Nothing is published over MQTT for she's sake (schema stays CLI-only, she SV-6).
 
+## 0.7.0 — needed by hm2mqtt 3.0 (done)
+
+Specified in the [hm2mqtt ROADMAP](https://github.com/hobbyquaker/hm2mqtt.js/blob/master/ROADMAP.md)
+§6.1 (G-4 … G-6); the first adapter whose payloads carry a large meta-data block and whose
+command topics predate the `set/` convention (drop-in replacement for a Node-RED flow).
+
+- [x] **G-4** `pubStatus(item, v, {extra})` merges extra fields into the JSON payload
+      (`{val, ts, lc, ...extra}`, never overriding the three); `StatusTracker` keeps them for
+      `republishStatus()`; ignored with `--no-json-payloads`.
+- [x] **G-5** `pubStatus(item, v, {ts, lc})` — device-side timestamps replace the tracker's clock.
+- [x] **G-6** `createAdapter({subscriptions: {'paramset/#': handler}})` subscribes further topics
+      under `<name>/` on every (re)connect and dispatches them like `onSet` with the wildcard
+      captures as `parts` (`matchTopic()` exported); unexpected topics still log a `warn`.
+
 ## Open questions (local)
 
 - Single package or `mqtt-interfaces-core` + separate `eslint-config`?

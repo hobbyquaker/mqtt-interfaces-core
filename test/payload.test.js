@@ -109,4 +109,23 @@ describe('StatusTracker', () => {
         assert.equal(s.update('list', [{id: 'a'}]).changed, false);
         assert.equal(s.update('list', [{id: 'b'}]).changed, true);
     });
+
+    test('extra fields are added to json payloads and remembered; val/ts/lc win', () => {
+        const s = new StatusTracker({json: true, now: () => 1000});
+        const {payload} = s.update('t', 21.5, {extra: {hm: {unit: '°C'}, val: 'no', ts: 'no'}});
+        assert.deepEqual(payload, {val: 21.5, ts: 1000, lc: 1000, hm: {unit: '°C'}});
+        assert.deepEqual(s.payload('t'), {val: 21.5, ts: 1000, lc: 1000, hm: {unit: '°C'}});
+        assert.equal(s.get('t'), 21.5);
+        assert.equal(new StatusTracker().update('t', 1, {extra: {hm: {}}}).payload, 1);
+    });
+
+    test('device-side ts/lc replace the clock', () => {
+        let t = 1000;
+        const s = new StatusTracker({json: true, now: () => t});
+        assert.deepEqual(s.update('v', 1, {ts: 500}).payload, {val: 1, ts: 500, lc: 500});
+        t = 2000;
+        assert.deepEqual(s.update('v', 1, {ts: 600}).payload, {val: 1, ts: 600, lc: 500});
+        assert.deepEqual(s.update('v', 2, {ts: 700, lc: 650}).payload, {val: 2, ts: 700, lc: 650});
+        assert.deepEqual(s.update('v', 2).payload, {val: 2, ts: 2000, lc: 650});
+    });
 });

@@ -9,7 +9,7 @@
 
 export const SPEC_VERSION = '2.0';
 
-export {createAdapter} from './lib/adapter.js';
+export {createAdapter, matchTopic} from './lib/adapter.js';
 export {createLogger, detectFormat, LEVELS} from './lib/log.js';
 export {parsePayload, toBoolean, clampInt, toVolume, StatusTracker} from './lib/payload.js';
 export {parseConfig, configSchema, applySharedEnv, SHARED_OPTIONS, SHARED_ENV} from './lib/config.js';

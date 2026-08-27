@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+Needed by hm2mqtt 3.0 (a drop-in replacement for a Node-RED flow: meta-data block in every
+payload, command topics besides `set/`).
+
+### Added
+
+- `pubStatus(item, value, {extra})`: additional fields in the `{val, ts, lc}` JSON payload (e.g.
+  `hm: {...}`); kept by `StatusTracker` and re-published after a reconnect, never overriding
+  `val`/`ts`/`lc`, ignored with `--no-json-payloads`.
+- `pubStatus(item, value, {ts, lc})`: device-side timestamps (ms) instead of the adapter's clock.
+- `createAdapter({subscriptions: {'paramset/#': handler, 'rpc/+/+/+': handler}})`: further topics
+  under `<name>/` are subscribed on every (re)connect and dispatched like `onSet`, with the levels
+  captured by the wildcards as `parts`. `matchTopic()` is exported.
+
 ## 0.6.1
 
 ### Fixed

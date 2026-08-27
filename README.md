@@ -323,20 +323,21 @@ adapter.start();
 
 `createAdapter()` options, in full:
 
-| Option                            | Meaning                                                                                                                      |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `pkg`                             | your `package.json` (name, version, homepage)                                                                                |
-| `config`                          | the `parseConfig()` result                                                                                                   |
-| `log`                             | logger override (default `createLogger` with the env prefix and `--verbosity`)                                               |
-| `deviceLabel`                     | name of the device in log lines (`'tv'`, `'cul'`)                                                                            |
-| `info`                            | object or function → extra fields of the retained `<name>/info`                                                              |
-| `discovery`                       | `({get, config}) → device block \| device block[] \| null` — see §7                                                          |
-| `discoveryTriggers`               | status items whose change re-publishes discovery (coalesced by `discoveryDelay`, default 1 s)                                |
-| `onSet(parts, value, topic, raw)` | handles `<name>/set/<parts…>`; `value` is the parsed payload (plain or `{val}`), return a promise; throw/reject → `warn` log |
-| `onMqttConnect({reconnect})`      | after every (re)connect once subscriptions are done and status is re-published                                               |
-| `onShutdown()`                    | called on SIGINT/SIGTERM/`maintenance/set/restart` before `connected 0` is published; may return a promise (2 s budget)      |
+| Option                            | Meaning                                                                                                                                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pkg`                             | your `package.json` (name, version, homepage)                                                                                                                                                                       |
+| `config`                          | the `parseConfig()` result                                                                                                                                                                                          |
+| `log`                             | logger override (default `createLogger` with the env prefix and `--verbosity`)                                                                                                                                      |
+| `deviceLabel`                     | name of the device in log lines (`'tv'`, `'cul'`)                                                                                                                                                                   |
+| `info`                            | object or function → extra fields of the retained `<name>/info`                                                                                                                                                     |
+| `discovery`                       | `({get, config}) → device block \| device block[] \| null` — see §7                                                                                                                                                 |
+| `discoveryTriggers`               | status items whose change re-publishes discovery (coalesced by `discoveryDelay`, default 1 s)                                                                                                                       |
+| `onSet(parts, value, topic, raw)` | handles `<name>/set/<parts…>`; `value` is the parsed payload (plain or `{val}`), return a promise; throw/reject → `warn` log                                                                                        |
+| `subscriptions`                   | `{pattern: handler}` — an adapter's own topics under `<name>/` besides `set/#` (`{'paramset/#': …, 'rpc/+/+/+': …}`); MQTT wildcards, handler called like `onSet` with the levels the wildcards captured as `parts` |
+| `onMqttConnect({reconnect})`      | after every (re)connect once subscriptions are done and status is re-published                                                                                                                                      |
+| `onShutdown()`                    | called on SIGINT/SIGTERM/`maintenance/set/restart` before `connected 0` is published; may return a promise (2 s budget)                                                                                             |
 
-The object it returns: `log`, `name`, `topic(...parts)`, `get(item)`, `pubStatus(item, value, {retain})`,
+The object it returns: `log`, `name`, `topic(...parts)`, `get(item)`, `pubStatus(item, value, {retain, extra, ts, lc})`,
 `clearStatus(item)`, `republishStatus()`, `publishInfo()`, `publishDiscovery({force})`,
 `markDiscoveryDirty()`, `setDeviceConnected(bool)`, `publish(topic, payload, opts)` (raw, for
 `<name>/raw`-style extras), `start()`, `shutdown(reason, exitCode)`, and the getters `mqtt`,
@@ -363,6 +364,13 @@ daemon, an unreachable device is normal operation, not a reason to exit.
   stay readable via `get()` for discovery.
 - **`clearStatus(item)`** when an item disappears for good (a device that left a bridge): clears
   the retained payload.
+- **Extra fields**: `pubStatus(item, v, {extra: {hm: {...}}})` adds an adapter's own meta data
+  next to `val`/`ts`/`lc` in the JSON payload (`{val, ts, lc, hm}`; ignored with
+  `--no-json-payloads`, never overrides the three). Values that carry a device-side time pass
+  `{ts, lc}` (ms) instead of the adapter's clock.
+- **Own topics** besides `set/#` (a command tree that is not a `set`, an RPC pass-through):
+  `createAdapter({subscriptions: {'paramset/#': handler}})` subscribes `<name>/paramset/#` and
+  dispatches like `onSet`. Keep them rare; `set/<item>` is the convention.
 - **`<name>/set/<item>[/...]`**: commands. Accept plain payloads (`50`, `true`, `on`, text) and
   `{"val": …}`; use `toBoolean`, `clampInt`, `toVolume` for tolerant parsing. A `set` on an item
   should result in a `status` update from the device's feedback, not from echoing the command.
@@ -497,15 +505,15 @@ npm version.
 
 ## Conventions implemented
 
-| topic                             | retained | notes                                                             |
-| --------------------------------- | -------- | ----------------------------------------------------------------- |
-| `<name>/connected`                | yes      | `0` LWT/shutdown, `1` mqtt only, `2` mqtt + device                |
-| `<name>/status/<item>`            | yes      | `{val, ts, lc}` JSON, or plain value with `--no-json-payloads`    |
-| `<name>/set/<item>[/...]`         | —        | plain value or `{"val": ...}`; handled by the adapter's `onSet`   |
-| `<name>/info`                     | yes      | `name, version, spec, node, host, pid, started, maintenance, ...` |
-| `<name>/maintenance/set/loglevel` | —        | `error`/`warn`/`info`/`debug`; `--no-maintenance` disables        |
-| `<name>/maintenance/set/restart`  | —        | graceful shutdown + exit 0; the supervisor restarts the process   |
-| `<ha-prefix>/device/<id>/config`  | yes      | HA device discovery, on by default; `--no-ha-discovery` clears it |
+| topic                             | retained | notes                                                                             |
+| --------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `<name>/connected`                | yes      | `0` LWT/shutdown, `1` mqtt only, `2` mqtt + device                                |
+| `<name>/status/<item>`            | yes      | `{val, ts, lc}` JSON (+ adapter extras), or plain value with `--no-json-payloads` |
+| `<name>/set/<item>[/...]`         | —        | plain value or `{"val": ...}`; handled by the adapter's `onSet`                   |
+| `<name>/info`                     | yes      | `name, version, spec, node, host, pid, started, maintenance, ...`                 |
+| `<name>/maintenance/set/loglevel` | —        | `error`/`warn`/`info`/`debug`; `--no-maintenance` disables                        |
+| `<name>/maintenance/set/restart`  | —        | graceful shutdown + exit 0; the supervisor restarts the process                   |
+| `<ha-prefix>/device/<id>/config`  | yes      | HA device discovery, on by default; `--no-ha-discovery` clears it                 |
 
 `discovery()` returns one device block, or an array of them for a bridge that sees several physical
 devices (one `config` topic per device, `device.via_device` pointing at the bridge; devices missing
@@ -528,6 +536,7 @@ All of them also as `<ADAPTER>_<OPTION>` environment variables; `MQTT_URL`, `MQT
 | Export (from `mqtt-interfaces-core`)                                                                                               | Purpose                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createAdapter(opts)`                                                                                                              | the façade — see [§5](#5-indexjs--the-adapter)                                                                                                     |
+| `matchTopic(pattern, levels)`                                                                                                      | the wildcard matcher behind `subscriptions` (`+`, trailing `#`) → captured levels or `null`                                                        |
 | `parseConfig({pkg, options, defaults, examples, epilog, check, scriptName, envPrefix})`                                            | CLI + env config, `--config-schema`                                                                                                                |
 | `configSchema({pkg, envPrefix, options, defaults})`                                                                                | the JSON Schema without parsing (tests)                                                                                                            |
 | `SHARED_OPTIONS`, `SHARED_ENV`, `applySharedEnv(env, prefix)`                                                                      | the canonical option set / broker env fallback                                                                                                     |

@@ -2,7 +2,7 @@ import {test, describe} from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 
-import {createAdapter} from '../lib/adapter.js';
+import {createAdapter, matchTopic} from '../lib/adapter.js';
 import {createLogger} from '../lib/log.js';
 import {entity} from '../lib/hadiscovery.js';
 
@@ -305,5 +305,77 @@ describe('shutdown', () => {
         client.deliver('foo/maintenance/set/restart', '1');
         assert.equal(await exited, 0);
         assert.equal(client.last('foo/connected').payload, '0');
+    });
+});
+
+describe('subscriptions (0.7.0)', () => {
+    test('matchTopic', () => {
+        assert.deepEqual(matchTopic('paramset/#', ['paramset', 'Foo', 'MASTER']), ['Foo', 'MASTER']);
+        assert.equal(matchTopic('paramset/#', ['paramset']), null);
+        assert.equal(matchTopic('paramset/#', ['set', 'x']), null);
+        assert.deepEqual(matchTopic('rpc/+/+/+', ['rpc', 'BidCos-RF', 'getValue', 'id1']), [
+            'BidCos-RF',
+            'getValue',
+            'id1',
+        ]);
+        assert.equal(matchTopic('rpc/+/+/+', ['rpc', 'BidCos-RF', 'getValue']), null);
+        assert.equal(matchTopic('rpc/+/+/+', ['rpc', 'a', 'b', 'c', 'd']), null);
+        assert.deepEqual(matchTopic('+/get', ['volume', 'get']), ['volume']);
+        assert.deepEqual(matchTopic('sync', ['sync']), []);
+        assert.equal(matchTopic('#/x', ['a', 'x']), null);
+    });
+
+    test('extra topics are subscribed and dispatched with the captured levels', async () => {
+        const calls = [];
+        const {client, lines, sets} = setup({
+            subscriptions: {
+                'paramset/#': (parts, value, topic, raw) => {
+                    calls.push({parts, value, topic, raw});
+                    if (value === 'boom') {
+                        throw new Error('kaboom');
+                    }
+                },
+                'rpc/+/+/+': (parts) => calls.push({rpc: parts}),
+            },
+        });
+        client.emit('connect');
+        assert.deepEqual(client.subscribed, ['foo/set/#', 'foo/maintenance/set/+', 'foo/paramset/#', 'foo/rpc/+/+/+']);
+        client.deliver('foo/paramset/Licht Flur/MASTER', '{"ON_TIME": 5}');
+        client.deliver('foo/rpc/BidCos-RF/getValue/c1', '["ABC:1", "STATE"]');
+        client.deliver('foo/paramset', '1');
+        client.deliver('foo/set/volume', '3');
+        client.deliver('foo/paramset/x/y', 'boom');
+        assert.deepEqual(calls[0], {
+            parts: ['Licht Flur', 'MASTER'],
+            value: {ON_TIME: 5},
+            topic: 'foo/paramset/Licht Flur/MASTER',
+            raw: '{"ON_TIME": 5}',
+        });
+        assert.deepEqual(calls[1], {rpc: ['BidCos-RF', 'getValue', 'c1']});
+        assert.equal(calls.length, 3);
+        assert.deepEqual(sets[0].parts, ['volume']);
+        assert.equal(lines.filter((l) => l.includes('ignoring unexpected topic')).length, 1);
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.ok(lines.some((l) => l.includes('<4>dev paramset x/y failed: kaboom')));
+    });
+
+    test('extra payload fields and device-side timestamps survive a reconnect', () => {
+        const {client, adapter} = setup({}, {jsonPayloads: true});
+        client.emit('connect');
+        adapter.pubStatus('Licht/STATE', true, {extra: {hm: {channel: 'ABC:1'}, val: 'ignored'}, ts: 1000, lc: 900});
+        let p = JSON.parse(client.last('foo/status/Licht/STATE').payload);
+        assert.deepEqual(p, {val: true, ts: 1000, lc: 900, hm: {channel: 'ABC:1'}});
+        assert.equal(adapter.get('Licht/STATE'), true);
+        client.emit('close');
+        client.published.length = 0;
+        client.emit('connect');
+        p = JSON.parse(client.last('foo/status/Licht/STATE').payload);
+        assert.deepEqual(p, {val: true, ts: 1000, lc: 900, hm: {channel: 'ABC:1'}});
+
+        // plain payloads ignore extra
+        const plain = setup();
+        plain.client.emit('connect');
+        plain.adapter.pubStatus('x', 1, {extra: {hm: {}}});
+        assert.equal(plain.client.last('foo/status/x').payload, '1');
     });
 });
