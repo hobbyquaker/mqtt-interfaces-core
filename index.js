@@ -29,6 +29,8 @@ export {
     tcpProbe,
     arpTable,
     localSubnets,
+    localBroadcasts,
     subnetHosts,
+    parseCidr,
     pool,
 } from './lib/discovery.js';

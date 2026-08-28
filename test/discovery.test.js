@@ -25,6 +25,7 @@ import {
     mdnsQuery,
     normalizeMac,
     ouiMatch,
+    parseCidr,
     parseDnsMessage,
     parseSsdp,
     pool,
@@ -42,7 +43,15 @@ function fakeSocket(answers = []) {
     socket.sent = [];
     socket.closed = false;
     socket.broadcast = false;
-    socket.bind = (callback) => setImmediate(callback);
+    socket.groups = [];
+    socket.boundPort = null;
+    // dgram accepts bind(cb) and bind(port, cb) — the mDNS listener uses the latter
+    socket.bind = (portOrCallback, maybeCallback) => {
+        const callback = typeof portOrCallback === 'function' ? portOrCallback : maybeCallback;
+        socket.boundPort = typeof portOrCallback === 'number' ? portOrCallback : 0;
+        setImmediate(() => callback && callback());
+    };
+    socket.addMembership = (group) => socket.groups.push(group);
     socket.setBroadcast = (value) => {
         socket.broadcast = value;
     };
@@ -132,6 +141,22 @@ describe('addresses', () => {
                 hosts: 254,
             },
         );
+    });
+
+    test('parseCidr turns a range into a subnet, and a bare address into nothing', () => {
+        assert.deepEqual(parseCidr('172.16.20.0/24'), {
+            interface: '172.16.20.0/24',
+            address: '172.16.20.0',
+            netmask: '255.255.255.0',
+            network: '172.16.20.0',
+            broadcast: '172.16.20.255',
+            hosts: 254,
+        });
+        assert.equal(parseCidr('172.16.20.180'), null, 'a bare address is a host, not a range');
+        assert.equal(parseCidr('nonsense'), null);
+        assert.equal(parseCidr('172.16.20.0/33'), null);
+        // a host address inside the range still yields the range it belongs to
+        assert.equal(parseCidr('172.16.20.180/24').network, '172.16.20.0');
     });
 
     test('subnetHosts covers .1 … .254 and refuses a subnet that is too big', () => {
@@ -281,6 +306,60 @@ describe('dns / mdns', () => {
             {name: 'Box._x._tcp.local', type: DNS_TYPE.SRV, data: {target: 'box.local', port: 80}},
         ];
         const found = assembleServices(records, '_x._tcp.local', new Map([['Box._x._tcp.local', '10.0.0.9']]));
+        assert.equal(found[0].address, '10.0.0.9');
+    });
+
+    test('an answer reflected onto the group (avahi bridging two VLANs) is heard too', async () => {
+        // the reflected answer is multicast to 5353, never unicast to the ephemeral sender port
+        const sender = fakeSocket([]);
+        const listener = fakeSocket([]);
+        const message = buildResponse('_googlecast._tcp.local', {
+            instance: 'Soundbar._googlecast._tcp.local',
+            host: 'sb.local',
+            port: 8009,
+            address: '172.16.20.180',
+            txt: {fn: 'Wohnzimmer', md: 'LG S95QR'},
+        });
+        const query = mdnsQuery({
+            service: '_googlecast._tcp',
+            ...FAST,
+            timeout: 40,
+            createSocket: ({listen}) => (listen ? listener : sender),
+        });
+        setImmediate(() => listener.emit('message', message, {address: '172.16.23.1'}));
+        const found = await query;
+        assert.equal(listener.boundPort, 5353, 'the listener binds the mDNS port');
+        assert.deepEqual(listener.groups, ['224.0.0.251'], 'and joins the group');
+        assert.equal(found.length, 1);
+        assert.equal(found[0].address, '172.16.20.180');
+        assert.equal(found[0].txt.fn, 'Wohnzimmer');
+        assert.ok(listener.closed && sender.closed, 'both sockets closed');
+    });
+
+    test('a listener that cannot bind 5353 leaves the browse working', async () => {
+        const sender = fakeSocket([
+            {
+                message: buildResponse('_x._tcp.local', {
+                    instance: 'Box._x._tcp.local',
+                    host: 'box.local',
+                    port: 1,
+                    address: '10.0.0.9',
+                    txt: {},
+                }),
+                address: '10.0.0.9',
+            },
+        ]);
+        const found = await mdnsQuery({
+            service: '_x._tcp',
+            ...FAST,
+            createSocket: ({listen}) => {
+                if (listen) {
+                    throw new Error('EADDRINUSE');
+                }
+                return sender;
+            },
+        });
+        assert.equal(found.length, 1);
         assert.equal(found[0].address, '10.0.0.9');
     });
 
@@ -567,6 +646,101 @@ describe('discover', () => {
         );
         assert.equal(found[0].address, '172.16.24.145');
         assert.equal(found[0].ccu, true);
+    });
+
+    test('a named address is a candidate of its own, confirmed by the declared ports', async () => {
+        // the soundbar is one subnet away: no mDNS answer ever arrives, port 9741 is all there is
+        const found = await discover(
+            {mdns: {service: '_googlecast._tcp'}, ports: {control: 9741}},
+            {
+                timeout: 5,
+                addresses: ['172.16.20.180'],
+                deps: {
+                    createSocket: () => fakeSocket([]),
+                    connect: fakeConnect(['172.16.20.180:9741']),
+                    interfaces: () => ({}),
+                },
+            },
+        );
+        assert.equal(found.length, 1);
+        assert.equal(found[0].address, '172.16.20.180');
+        assert.deepEqual(found[0].sources, ['address']);
+        assert.deepEqual(found[0].services, {control: true});
+    });
+
+    test('a named address with nothing listening is not a device', async () => {
+        const found = await discover(
+            {mdns: {service: '_x._tcp'}, ports: {control: 9741}},
+            {
+                timeout: 5,
+                addresses: ['172.16.20.181'],
+                deps: {createSocket: () => fakeSocket([]), connect: fakeConnect([]), interfaces: () => ({})},
+            },
+        );
+        assert.deepEqual(found, []);
+    });
+
+    test('requirePort false does not make a named address a device either', async () => {
+        // hm2mqtt keeps a CCU whose ports are all closed — it answered the broadcast. An address
+        // that answered nothing at all has proved nothing.
+        const found = await discover(
+            {udp: {port: 43439, payload: 'x', parse: () => ({})}, ports: {ReGa: 8181}, requirePort: false},
+            {
+                timeout: 5,
+                addresses: ['172.16.24.145'],
+                deps: {createSocket: () => fakeSocket([]), connect: fakeConnect([]), interfaces: () => ({})},
+            },
+        );
+        assert.deepEqual(found, []);
+    });
+
+    test('an address that answers a method keeps that source, not "address"', async () => {
+        const socket = fakeSocket([{message: Buffer.from('answer'), address: '172.16.24.145'}]);
+        const found = await discover(
+            {udp: {port: 43439, payload: 'x', parse: () => ({ccu: true})}, ports: {ReGa: 8181}, requirePort: false},
+            {
+                timeout: 5,
+                addresses: ['172.16.24.145'],
+                deps: {createSocket: () => socket, connect: fakeConnect([]), interfaces: () => ({})},
+            },
+        );
+        assert.equal(found.length, 1);
+        assert.deepEqual(found[0].sources, ['udp']);
+    });
+
+    test('--discover-address takes a range and sweeps it, whatever the sweep rule says', async () => {
+        // the soundbar is on another VLAN and its address is unknown: sweep it for the port
+        const socket = fakeSocket([{message: ssdpResponse, address: '192.168.1.20'}]);
+        const interfaces = () => ({
+            eth0: [{family: 'IPv4', address: '192.168.1.20', netmask: '255.255.255.0', internal: false}],
+        });
+        const found = await discover(
+            {ssdp: {}, ports: {control: 9741}},
+            {
+                timeout: 5,
+                addresses: ['172.16.20.0/29'],
+                deps: {
+                    createSocket: () => socket,
+                    connect: fakeConnect(['172.16.20.5:9741', '192.168.1.20:9741']),
+                    interfaces,
+                },
+            },
+        );
+        // ssdp answered, so the "auto" sweep of the local subnet is skipped — the range is not
+        assert.deepEqual(
+            found.map((entry) => entry.address),
+            ['172.16.20.5', '192.168.1.20'],
+        );
+        assert.deepEqual(found[0].sources, ['sweep']);
+    });
+
+    test('the range broadcast is probed as well', async () => {
+        const socket = fakeSocket([]);
+        await discover(
+            {udp: {port: 43439, payload: 'x', parse: () => ({})}},
+            {timeout: 5, addresses: ['172.16.20.0/24'], deps: {createSocket: () => socket, interfaces: () => ({})}},
+        );
+        assert.ok(socket.sent.some((entry) => entry.address === '172.16.20.255'));
     });
 
     test('results are sorted by address', async () => {

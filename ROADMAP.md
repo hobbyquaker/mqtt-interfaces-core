@@ -73,11 +73,14 @@ the convention itself is specified in
   unit tests against faked sockets; mDNS, the ARP parser and the subnet
   maths verified against a real network, SSDP only against captures (no
   UPnP responder answers on this LAN — checked with an independent client).
-  First pilot wired up and verified end to end: hm2mqtt 3.3.0 finds a real
-  CCU3 (`--discover`, `-a auto`), which also produced `--discover-address` —
-  a broadcast never crosses a router, and a CCU on its own VLAN is the normal
-  case. **Open**: one more pilot (lgsb2mqtt or lgtv2mqtt) before the hint shape
-  is final; SSDP is still only proven against captures.
+  Two pilots wired up and verified against real hardware: hm2mqtt 3.3.0 (a
+  CCU3 by the eQ-3 broadcast probe) and lgsb2mqtt 2.1.0 (a soundbar by a
+  `_googlecast._tcp` browse narrowed to the temescal port). The hint shape
+  survived both without a change; what the real network added was
+  `--discover-address` (a device or a `10.0.1.0/24` range — nothing broadcast
+  or multicast crosses a router, and both pilots' devices live on their own
+  VLAN) and the mDNS group listener for reflected answers. **Open**: SSDP is
+  the one method still unproven against hardware — lgtv2mqtt would settle it.
 - [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared
@@ -117,11 +120,11 @@ the convention itself is specified in
    lib and the two pilots are the living draft).
 5. HA discovery publisher + CI validation (B-8).
 6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`),
-   ~~first pilot hm2mqtt 3.3.0~~ (the eQ-3 UDP probe of
+   ~~pilots hm2mqtt 3.3.0~~ (the eQ-3 UDP probe of
    [hm-discover](https://github.com/hobbyquaker/hm-discover), the worked example
-   in README §8). Second pilot open: lgsb2mqtt (`_googlecast._tcp` + port 9741)
-   or lgtv2mqtt (SSDP webOS ST) — the latter would also be the first real test
-   of the SSDP path.
+   in README §8) ~~and lgsb2mqtt 2.1.0~~ (`_googlecast._tcp` + port 9741).
+   lgtv2mqtt (SSDP webOS ST) is worth doing as the first real test of the SSDP
+   path.
 7. `--install` module, shared tooling package.
 
 ## 0.3.0 — needed by alexa-remote-mqtt 2.0 (done)

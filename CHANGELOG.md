@@ -13,10 +13,17 @@
 - `parseConfig({discovery: true})` adds `--discover`, `--discover-json` and `--discover-timeout`
   (meta options, never part of an instance configuration). `--discover` is exempt from mandatory
   options — the address it goes looking for must not be required to run it.
-- `--discover-address` (repeatable): probe a device or another subnet's broadcast address
-  directly. Probes otherwise go to the method's own group/broadcast address plus the broadcast
-  address of every local subnet — nothing of that crosses a router, and a device one hop away
-  (a CCU on its own VLAN) is reachable no other way.
+- `--discover-address` (repeatable) for devices a router away, which no broadcast and no
+  multicast reaches: an address (`172.16.24.145`) is probed _and_ becomes a candidate in its own
+  right, confirmed by the declared ports; a range (`172.16.20.0/24`) is swept for them. Probes
+  otherwise go to the method's own group/broadcast address plus the broadcast address of every
+  local subnet — `255.255.255.255` alone does not reliably leave the host.
+- `mdnsQuery` listens on the mDNS group (port 5353, shared via `reuseAddr`) next to the socket
+  that sent the query. An answer that came through an mDNS reflector — avahi with
+  `enable-reflector`, bridging two VLANs — arrives as multicast there and never as unicast to the
+  query's source port, so without the second socket every reflected device stays invisible. The
+  browse falls back to the sending socket alone when 5353 cannot be shared.
+- `parseCidr`, `localBroadcasts` exported.
 - `runDiscovery({hint, config, log})` for `--discover`, `autoAddress(hint, {config, log})` for
   `--address auto`
   (refuses to guess when none or several devices answer; with `config` it honours

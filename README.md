@@ -489,9 +489,24 @@ it); subnets larger than 4096 hosts are skipped with a warning rather than swept
 
 Probes go to the method's own group or broadcast address **and** to the broadcast address of
 every local subnet — `255.255.255.255` is dropped by some stacks and never leaves the wire on
-others. None of that crosses a router, though: for a device one hop away, `--discover-address`
-names it (`--discover-address 172.16.24.145`) or names another subnet's broadcast address. That
-is not a rare case — a CCU on its own VLAN is exactly how the pilot below is deployed.
+others. Nothing of that crosses a router, so `--discover-address` takes what does:
+
+| `--discover-address …` | what it does                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `172.16.24.145`        | probes that device, and makes it a candidate in its own right — confirmed by the declared ports |
+| `172.16.20.0/24`       | sweeps the range for the declared ports, whatever the `sweep` rule says                         |
+
+Both are for devices a router away, which is not a rare case: in the deployment both pilots below
+run in, the CCU and the soundbar each live on their own VLAN.
+
+mDNS is the exception, and only with help: an mDNS reflector (avahi with `enable-reflector`)
+does bridge a browse across VLANs. Reflected answers arrive as multicast on port 5353 rather than
+as unicast to the query's source port, so `mdnsQuery` listens on both — a socket joined to the
+group next to the one that asked. Without that second socket, everything behind a reflector is
+invisible; with it, a soundbar one VLAN away is found by name and model. Do not rely on it
+though: measured over 20 second browses through a reflector, the same device answered one and
+not the next, so `--discover-address` stays the dependable route. Each query is repeated `tries`
+times (3) spread over the timeout for the same reason.
 
 The worked example is Homematic, straight from
 [hm-discover](https://github.com/hobbyquaker/hm-discover): a magic datagram to UDP 43439, and the
