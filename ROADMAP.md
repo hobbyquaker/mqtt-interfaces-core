@@ -82,8 +82,10 @@ the convention itself is specified in
   VLAN) and the mDNS group listener for reflected answers. A third pilot,
   cul2mqtt 1.2.0, took discovery off the network entirely: a USB stick is found
   by the name udev gave it (`serial` hint), which also settled that a candidate
-  is not always an ip address. **Open**: SSDP is the one method still unproven
-  against hardware — lgtv2mqtt would settle it.
+  is not always an ip address. wiim2mqtt 1.1.0 is the fourth and finally
+  exercises SSDP against real hardware — and found two bugs the fakes could not
+  (the `HOST` header of a multi-target M-SEARCH, and a broadcast target
+  silencing the whole scan). Every method is now proven on a real network.
 - [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared
@@ -125,9 +127,15 @@ the convention itself is specified in
 6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`),
    ~~pilots hm2mqtt 3.3.0~~ (the eQ-3 UDP probe of
    [hm-discover](https://github.com/hobbyquaker/hm-discover), the worked example
-   in README §8) ~~and lgsb2mqtt 2.1.0~~ (`_googlecast._tcp` + port 9741).
-   lgtv2mqtt (SSDP webOS ST) is worth doing as the first real test of the SSDP
-   path.
+   in README §8), ~~lgsb2mqtt 2.1.0~~ (`_googlecast._tcp` + port 9741),
+   ~~cul2mqtt 1.2.0~~ (a USB stick by its by-id name) and ~~wiim2mqtt 1.1.0~~
+   (SSDP MediaRenderer + the UPnP description). Candidates for the rest of the
+   fleet: lgtv2mqtt (SSDP webOS ST), fritz2mqtt (SSDP IGD, or TR-064 on 49000 —
+   works through a NAT cascade, where SSDP does not), unifi2mqtt (the Ubiquiti
+   UDP probe on 10001, which UniFi gear answers with model and firmware) and
+   govee2mqtt (its LAN scan, which needs the answer socket bound to 4002).
+   ecoflow2mqtt has nothing on the network to find — the inverter only talks to
+   EcoFlow's cloud, so "discovery" there means listing the account's devices.
 7. `--install` module, shared tooling package.
 
 ## 0.3.0 — needed by alexa-remote-mqtt 2.0 (done)

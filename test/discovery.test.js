@@ -60,8 +60,18 @@ function fakeSocket(answers = []) {
     socket.close = () => {
         socket.closed = true;
     };
-    socket.send = (message, offset, length, port, address) => {
+    socket.send = (message, offset, length, port, address, callback) => {
         socket.sent.push({message, port, address});
+        // a real socket fails a broadcast send with EACCES unless SO_BROADCAST was set
+        if (/\.255$/.test(String(address)) && !socket.broadcast) {
+            const error = Object.assign(new Error('send EACCES'), {code: 'EACCES'});
+            if (callback) {
+                setImmediate(() => callback(error));
+            } else {
+                setImmediate(() => socket.emit('error', error));
+            }
+            return;
+        }
         for (const answer of answers) {
             setImmediate(() =>
                 socket.emit('message', answer.message, {address: answer.address, port: answer.port || port}),
@@ -210,6 +220,23 @@ describe('ssdp', () => {
     test('parseSsdp rejects anything that is not a response or a notify', () => {
         assert.equal(parseSsdp('GET / HTTP/1.1\r\nHost: x\r\n\r\n'), null);
         assert.equal(parseSsdp(''), null);
+    });
+
+    test('each target gets a message whose HOST names that target', async () => {
+        // a device drops an M-SEARCH whose HOST header is not its address or the ssdp group —
+        // interpolating the whole target list into it made every device ignore the search
+        const socket = fakeSocket([]);
+        socket.broadcast = true;
+        await ssdpSearch({
+            st: 'ssdp:all',
+            ...FAST,
+            address: ['239.255.255.250', '172.16.23.255', '172.16.24.145'],
+            createSocket: () => socket,
+        });
+        for (const entry of socket.sent) {
+            assert.match(String(entry.message), new RegExp(`^HOST: ${entry.address}:1900$`, 'm'), entry.address);
+        }
+        assert.equal(socket.sent.length, 3);
     });
 
     test('M-SEARCH goes to the group and the answers carry the sender address', async () => {
@@ -907,6 +934,49 @@ describe('discover', () => {
         socket.bind = () => setImmediate(() => socket.emit('error', new Error('EACCES')));
         const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket}});
         assert.deepEqual(found, []);
+    });
+});
+
+describe('broadcast targets do not kill the scan', () => {
+    // regression: a subnet broadcast target without SO_BROADCAST fails with EACCES, and that
+    // error used to take the queued multicast datagram with it — ssdp and mdns went silent
+    const response = Buffer.from('HTTP/1.1 200 OK\r\nSERVER: Linux\r\n\r\n');
+    const interfaces = () => ({
+        eth0: [{family: 'IPv4', address: '172.16.23.226', netmask: '255.255.255.0', internal: false}],
+    });
+
+    test('ssdp sets SO_BROADCAST before sending', async () => {
+        const socket = fakeSocket([{message: response, address: '172.16.23.189'}]);
+        const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket, interfaces}});
+        assert.equal(socket.broadcast, true, 'SO_BROADCAST set');
+        assert.ok(
+            socket.sent.some((entry) => entry.address === '172.16.23.255'),
+            'the subnet broadcast was attempted',
+        );
+        assert.equal(found.length, 1, 'and the multicast answer still arrived');
+        assert.equal(found[0].address, '172.16.23.189');
+    });
+
+    test('mdns too', async () => {
+        const socket = fakeSocket([]);
+        await discover(
+            {mdns: {service: '_googlecast._tcp'}},
+            {timeout: 5, deps: {createSocket: () => socket, interfaces}},
+        );
+        assert.equal(socket.broadcast, true);
+    });
+
+    test('a target the stack rejects outright is skipped, not fatal', async () => {
+        const socket = fakeSocket([{message: response, address: '172.16.23.189'}]);
+        const good = socket.send;
+        socket.send = (message, offset, length, port, address, callback) => {
+            if (address === '239.255.255.250') {
+                return good(message, offset, length, port, address, callback);
+            }
+            throw new Error('EINVAL');
+        };
+        const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket, interfaces}});
+        assert.equal(found.length, 1);
     });
 });
 

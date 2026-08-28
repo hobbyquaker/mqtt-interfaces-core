@@ -29,6 +29,18 @@
   with another stick's — and the resolved device node comes along as `device`. Serial candidates
   are exempt from `ports` and the sweep: being plugged in is the proof. `/dev/cu.usb*` on macOS.
 - `parseCidr`, `localBroadcasts`, `listSerialPorts`, `serialMatches` exported.
+
+### Fixed
+
+- SSDP builds one M-SEARCH per target, with `HOST` naming that target. Sending to several targets
+  interpolated the whole list into the header (`HOST: 239.255.255.250,172.16.23.255:1900`), which
+  every device on the link quietly ignored — the search found nothing while a single-target search
+  worked.
+- `ssdpSearch` and `mdnsQuery` set `SO_BROADCAST` before sending. Without it a subnet-broadcast
+  target fails with EACCES, and that failure is not local to the target: it surfaces on the socket
+  and takes the queued datagrams with it.
+- A send that a target rejects no longer ends the scan: each datagram carries its own callback, so
+  one unreachable or forbidden address cannot silence the others.
 - `runDiscovery({hint, config, log})` for `--discover`, `autoAddress(hint, {config, log})` for
   `--address auto`
   (refuses to guess when none or several devices answer; with `config` it honours
