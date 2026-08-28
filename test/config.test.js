@@ -191,3 +191,49 @@ describe('helpers', () => {
         assert.equal(env.X_MQTT_TLS_CA, '/ca.pem');
     });
 });
+
+describe('discovery options', () => {
+    test('are absent unless the adapter declares a hint', () => {
+        const c = parse(['-a', '10.0.0.1']);
+        assert.equal(c.discover, undefined);
+        assert.equal(c.discoverTimeout, undefined);
+    });
+
+    test('discovery: true adds --discover, --discover-json and --discover-timeout', () => {
+        const c = parseConfig({
+            pkg,
+            options,
+            defaults: {name: 'foo'},
+            discovery: true,
+            argv: ['--discover'],
+            env: {},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.discover, true);
+        assert.equal(c.discoverTimeout, 5);
+    });
+
+    test('--discover is not blocked by a mandatory adapter option', () => {
+        // `address` is demandOption — going looking for it is the whole point of --discover
+        const c = parseConfig({
+            pkg,
+            options,
+            defaults: {name: 'foo'},
+            discovery: true,
+            argv: ['--discover'],
+            env: {},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.address, undefined);
+        assert.equal(c.discover, true);
+    });
+
+    test('they never reach the instance configuration', () => {
+        const schema = configSchema({pkg, envPrefix: 'FOO2MQTT', options, defaults: {name: 'foo'}});
+        for (const meta of ['discover', 'discover-json', 'discover-timeout']) {
+            assert.equal(schema.properties[meta], undefined, meta);
+        }
+    });
+});

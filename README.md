@@ -428,7 +428,92 @@ device`), `device.via_device` pointing at the bridge's id, and optionally its ow
 - Entity names in `label` are what the user sees; keep them short and device-relative
   ("Volume", not "Living room TV volume" — HA prefixes the device name).
 
-### 8. Logging
+### 8. Device discovery — lib/discovery.js
+
+Finding the device on the network is the same job in every adapter — an SSDP M-SEARCH, a DNS-SD
+browse, a vendor's UDP broadcast probe, a sweep of the local subnet, a look at the ARP cache — so
+the core owns the sockets, the rate limiting, the timeouts and the merging, and the adapter only
+declares what its devices look like:
+
+```js
+// config.js
+export const DISCOVERY = {
+  ssdp: {st: 'urn:lge-com:service:webos-second-screen:1'},
+  ports: {webos: 3000},
+};
+
+export default parseConfig({pkg, options: OPTIONS, discovery: true, defaults: {name: 'lgtv'}});
+```
+
+`discovery: true` adds `--discover`, `--discover-json` and `--discover-timeout` (they are meta
+options: never written to an env file, never part of `--config-schema`). Three lines in
+`index.js` use them:
+
+```js
+import {runDiscovery, autoAddress} from 'mqtt-interfaces-core';
+import config, {DISCOVERY} from './config.js';
+
+if (config.discover) {
+  await runDiscovery({hint: DISCOVERY, config, log}); // prints and exits
+}
+if (config.tv === 'auto') {
+  config.tv = await autoAddress(DISCOVERY, {log}); // throws on none and on several
+}
+```
+
+`--discover` is exempt from mandatory options — the address it is about to go looking for must
+not be required to run it.
+
+The hint:
+
+| key     | what it does                                                                                                                                        |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssdp`  | `{st, match(headers, address)}` — M-SEARCH to 239.255.255.250:1900, answers become candidates                                                       |
+| `mdns`  | `{service: '_googlecast._tcp', match(entry)}` — DNS-SD browse; PTR → SRV → A is resolved into `{address, name, port, txt}`                          |
+| `udp`   | `{port, payload, parse(message, rinfo), address}` — broadcast probe; `parse` returns the fields or `null` to drop                                   |
+| `ports` | `{label: port}` probed on every candidate → `services: {label: true\|false}`; a candidate with none open is dropped (`requirePort: false` keeps it) |
+| `oui`   | MAC prefixes — matching entries of the ARP cache become candidates                                                                                  |
+| `probe` | `async (address, entry) => fields \| null` — the last word; `null` drops the candidate                                                              |
+
+Every declared method runs in parallel and contributes candidates; they are merged per address
+(`sources: ['mdns', 'oui']` records who found it). A TCP sweep of the local subnets runs only
+when `ports` are declared and nothing else answered (`sweep: true` forces it, `false` disables
+it); subnets larger than 4096 hosts are skipped with a warning rather than swept.
+
+The worked example is Homematic, straight from
+[hm-discover](https://github.com/hobbyquaker/hm-discover): a magic datagram to UDP 43439, and the
+CCU's interfaces read off the ports that answer.
+
+```js
+const EQ3_PROBE = Buffer.from([0x02, 0x8f, 0x91, 0xc0, 0x01, 0x65, 0x51, 0x33, 0x2d, 0x2a, 0x00, 0x2a, 0x00, 0x49]);
+
+export const DISCOVERY = {
+  udp: {
+    port: 43439,
+    payload: EQ3_PROBE,
+    parse(message) {
+      if (message.subarray(0, 5).toString('hex') !== '028f91c001') {
+        return null; // not an eQ-3 answer
+      }
+      const [type, serial] = message.subarray(5).toString('binary').split('\0');
+      return {type, serial};
+    },
+  },
+  ports: {ReGaHSS: 1999, 'BidCos-Wired': 2000, 'BidCos-RF': 2001, 'HmIP-RF': 2010, VirtualDevices: 9292, CUxD: 8701},
+};
+```
+
+```
+$ hm2mqtt --discover
+192.168.1.130  eQ3-HM-CCU2-App  serial KEQ0112345  [ReGaHSS BidCos-RF HmIP-RF VirtualDevices]  (udp)
+```
+
+For anything the hint cannot express, the pieces are exported on their own: `ssdpSearch`,
+`mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`, `localSubnets`, `subnetHosts` and `pool` (the
+concurrency limiter). They speak the protocols directly — no discovery stack per protocol on a
+Raspberry Pi.
+
+### 9. Logging
 
 `adapter.log` is a `createLogger()` (levels `debug`/`info`/`warn`/`error`; journald format with
 `<N>` priorities and no own timestamp when running under systemd; text with colours on a TTY;
@@ -442,7 +527,7 @@ device`), `device.via_device` pointing at the bridge's id, and optionally its ow
 - `error`: only things that need a human (bad config, unrecoverable state). Never swallow device
   errors — log them once, dedupe repeats (log the first, then `debug` until it changes).
 
-### 9. Tests, lint, CI, release
+### 10. Tests, lint, CI, release
 
 - `config.js` parses the command line at import time: a test that imports `OPTIONS` from it must
   satisfy mandatory options first (`process.env.XYZ2MQTT_ADDRESS = …` before a dynamic
@@ -465,7 +550,7 @@ device`), `device.via_device` pointing at the bridge's id, and optionally its ow
 - Versioning: semver; renaming topics or options is a major; new items/options a minor; fixes a
   patch. Keep `engines.node` in sync with the core.
 
-### 10. Docker
+### 11. Docker
 
 ```dockerfile
 FROM node:22-alpine
@@ -536,7 +621,7 @@ repository. Tags are `x.y.z`, `x.y` and `latest`; qemu makes the arm builds slow
 workflow to a single runner. Document the `docker run` line in the README next to the npm and
 systemd install.
 
-### 11. Development deploys
+### 12. Development deploys
 
 `deploy.sh` (take cul2mqtt's) runs the tests, `npm pack`s the adapter — and every `file:../…`
 dependency, so you can develop against an unreleased sibling checkout of the core — copies the
@@ -544,7 +629,7 @@ tarballs to a host, installs into `/usr/local/lib/node_modules/<adapter>` and re
 `<adapter>@*` units. she marks such installs as _manual_ and asks before replacing them with the
 npm version.
 
-### 12. Checklist before the first release
+### 13. Checklist before the first release
 
 - [ ] `npm run lint`, `npm test` green; CI workflow in place.
 - [ ] README: install (`npm install -g`, `--install`, Docker), options table, topics with payload
@@ -606,6 +691,8 @@ Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
 | `createLogger({envPrefix, format, color, level, write})`, `detectFormat()`, `LEVELS`                                               | logging                                                                                                                                            |
 | `parsePayload(raw)`, `toBoolean(v)`, `clampInt(v, min, max)`, `toVolume(v)`, `StatusTracker`                                       | payload helpers (`StatusTracker`: `update`, `get`, `payload`, `isRetained`, `delete`)                                                              |
 | `entity({...})`, `devicePayload({...})`, `availability(name, min)`, `discoveryId(adapter, instance)`, `discoveryTopic(prefix, id)` | Home Assistant discovery                                                                                                                           |
+| `discover(hint, opts)`, `discoverOne(hint, opts)`, `autoAddress(hint, opts)`, `runDiscovery({hint, config, log})`                  | device discovery — see [§8](#8-device-discovery--libdiscoveryjs)                                                                                   |
+| `ssdpSearch`, `mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`, `localSubnets`, `subnetHosts`, `pool`, `DISCOVERY_OPTIONS`          | the discovery pieces on their own                                                                                                                  |
 | `SPEC_VERSION`                                                                                                                     | `'2.0'`                                                                                                                                            |
 
 ## Management UIs: she

@@ -15,3 +15,20 @@ export {parsePayload, toBoolean, clampInt, toVolume, StatusTracker} from './lib/
 export {parseConfig, configSchema, applySharedEnv, SHARED_OPTIONS, SHARED_ENV} from './lib/config.js';
 export {discoveryId, discoveryTopic, availability, entity, devicePayload} from './lib/hadiscovery.js';
 export {createInstaller, envVarName, instanceName} from './lib/install.js';
+export {
+    discover,
+    discoverOne,
+    autoAddress,
+    runDiscovery,
+    describe as describeDevice,
+    DiscoveryError,
+    DISCOVERY_OPTIONS,
+    ssdpSearch,
+    mdnsQuery,
+    udpProbe,
+    tcpProbe,
+    arpTable,
+    localSubnets,
+    subnetHosts,
+    pool,
+} from './lib/discovery.js';

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+
+- **Device discovery** (B-2), `lib/discovery.js`: the scanning mechanics every adapter would
+  otherwise repeat — SSDP M-SEARCH, mDNS/DNS-SD browse, UDP broadcast probes (the
+  [hm-discover](https://github.com/hobbyquaker/hm-discover) pattern), subnet TCP sweeps and an
+  ARP/OUI lookup — driven by a declarative hint plus an optional `probe(address)`. Candidates are
+  merged per address, the declared `ports` are probed on each of them, and every scan is rate
+  limited and time bounded. No dependencies: the protocols are spoken directly.
+- `parseConfig({discovery: true})` adds `--discover`, `--discover-json` and `--discover-timeout`
+  (meta options, never part of an instance configuration). `--discover` is exempt from mandatory
+  options — the address it goes looking for must not be required to run it.
+- `runDiscovery({hint, config, log})` for `--discover`, `autoAddress(hint)` for `--address auto`
+  (refuses to guess when none or several devices answer), `discover()` / `discoverOne()`, and the
+  pieces on their own: `ssdpSearch`, `mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`,
+  `localSubnets`, `subnetHosts`, `pool`.
+
 ## 0.8.1
 
 ### Changed

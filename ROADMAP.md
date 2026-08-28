@@ -63,19 +63,28 @@ the convention itself is specified in
   with `payload_available: "2"`; pure builder from an adapter-supplied
   entity map (model: lgsb2mqtt `lib/hadiscovery.js`). Validation against
   HA's schema in CI — approach to decide here (B-8).
-- [ ] **Device discovery** (B-2): the scanning mechanics exactly once —
-      mDNS/SSDP listeners, subnet TCP probes, OUI lookup, rate limiting,
-      timeouts — driven by the adapter's declarative hint and `probe(ip)`;
-      provides `--discover [--json] [--timeout]` and `--address auto`
-      (refuses to start on multiple matches).
+- [~] **Device discovery** (B-2, 0.9.0): the scanning mechanics exactly once —
+  mDNS/DNS-SD and SSDP, UDP broadcast probes, subnet TCP sweeps, ARP/OUI
+  lookup, rate limiting, timeouts — driven by the adapter's declarative hint
+  and `probe(ip)`; provides `--discover`, `--discover-json` and
+  `--discover-timeout` (prefixed so they cannot collide with an adapter's own
+  `--json`/`--timeout`) plus `autoAddress()` for `--address auto`, which
+  refuses to guess on none and on several matches. `lib/discovery.js`, 45
+  unit tests against faked sockets; mDNS, the ARP parser and the subnet
+  maths verified against a real network, SSDP only against captures (no
+  UPnP responder answers on this LAN — checked with an independent client).
+  **Open**: no adapter uses it yet — the pilots below are the next step, and
+  the hint shape is not frozen until two of them are wired up.
 - [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared
       broker env file (B-3); parameterised by adapter name (today duplicated
       in lgsb2mqtt/lgtv2mqtt `lib/install.js`).
-- [ ] **Shared tooling**: eslint + prettier config export, GitHub workflow
-      templates (lint/test on Node 20/22/24, release), Dockerfile template
-      (multi-arch, env config).
+- [~] **Shared tooling**: eslint + prettier config export, GitHub workflow
+  templates (lint/test on Node 20/22/24, release), Dockerfile template
+  (multi-arch, env config). The Docker/release half is a documented standard
+  since 0.8.1 (README §11: every adapter publishes a multi-arch image to
+  ghcr.io on every tag); nothing is exported as a package yet.
 
 ## Pilot inventory — what gets extracted from where
 
@@ -104,8 +113,11 @@ the convention itself is specified in
 4. Spec 2.x in the umbrella repo is written _from_ what the core does (the
    lib and the two pilots are the living draft).
 5. HA discovery publisher + CI validation (B-8).
-6. Device discovery module with lgsb2mqtt (`_googlecast._tcp` + port 9741)
-   and lgtv2mqtt (SSDP webOS ST) as the two pilots (B-2).
+6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`).
+   The pilots are open: hm2mqtt (the eQ-3 UDP probe of
+   [hm-discover](https://github.com/hobbyquaker/hm-discover), the worked example
+   in README §8), lgsb2mqtt (`_googlecast._tcp` + port 9741) and lgtv2mqtt
+   (SSDP webOS ST). Wire two of them before calling the hint shape final.
 7. `--install` module, shared tooling package.
 
 ## 0.3.0 — needed by alexa-remote-mqtt 2.0 (done)
