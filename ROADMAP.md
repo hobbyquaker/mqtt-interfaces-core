@@ -168,8 +168,12 @@ items I4–I8; decision SV-1 there). The core's side of it:
 - [x] `secret: true` → `x-secret` in the schema (she SV-10).
 - [x] `mqttInterfaces` package.json field echoed in `x-adapter`; README documents the field and
       the npm keyword `mqtt-interfaces` (she SV-11 — catalog by npm self-marking, no catalog file).
-- [ ] Adapters: add keyword + field and mark their secrets (lgtv2mqtt, cul2mqtt, alexa-remote-mqtt,
-      lgsb2mqtt) — one line each, next release of each.
+- [x] ~~Adapters: add keyword + field and mark their secrets (lgtv2mqtt, cul2mqtt,
+      alexa-remote-mqtt, lgsb2mqtt)~~ — the `mqttInterfaces` field is in all eleven adapters; the
+      `mqtt-interfaces` keyword was missing in lgtv2mqtt, lgsb2mqtt and alexa-remote-mqtt and is
+      committed there (2026-08-28), reaching npm with each adapter's next release. Nothing to mark
+      as secret in those four: none of them has a credential option (alexa's `cookie-file` is a
+      path, not a secret).
 - Nothing is published over MQTT for she's sake (schema stays CLI-only, she SV-6).
 
 ## 0.7.0 — needed by hm2mqtt 3.0 (done)
