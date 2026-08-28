@@ -28,7 +28,21 @@
   path — the one worth putting in a config, since the `/dev/ttyACM0` it points at can swap places
   with another stick's — and the resolved device node comes along as `device`. Serial candidates
   are exempt from `ports` and the sweep: being plugged in is the proof. `/dev/cu.usb*` on macOS.
-- `parseCidr`, `localBroadcasts`, `listSerialPorts`, `serialMatches` exported.
+- **Names**: every network candidate carries the names it answers to, verified by a round trip
+  (reverse the address, resolve each name back, keep it only when the address is among the
+  answers) — `fqdn` when the qualified name checks out, `hostname` when the short label does.
+  `address` is never replaced, so a consumer can offer all three (she I13). `--address auto` takes
+  the `fqdn` when there is one, since it outlives a dhcp lease; `--discover-ip` pins the address.
+  The short form is offered but never preferred: it resolves through the search list of whoever
+  asks. `.local` is skipped — it verifies on a host with mDNS resolution and fails in a container
+  on the same host.
+- **`x-discover`** in `--config-schema`: the property flagged `discover: true` in its option
+  definition is marked with the kind of scan the adapter's hint asks for (`"network"`, `"serial"`,
+  or both, derived by the core). A schema with such a property is a discovery-capable adapter —
+  what she's Add-instance flow keys off (she I13). Pass the hint to `parseConfig` as `discovery`
+  instead of `true` to get it.
+- `parseCidr`, `localBroadcasts`, `listSerialPorts`, `serialMatches`, `resolveNames`,
+  `discoveryKinds` exported.
 
 ### Fixed
 

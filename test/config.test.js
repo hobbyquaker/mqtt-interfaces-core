@@ -230,9 +230,65 @@ describe('discovery options', () => {
         assert.equal(c.discover, true);
     });
 
+    test('x-discover marks the property the scan fills, with the kind of scan', () => {
+        const withHint = {...options, address: {...options.address, discover: true}};
+        const network = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: withHint,
+            defaults: {name: 'foo'},
+            discovery: {ssdp: {st: 'x'}, ports: {api: 80}},
+        });
+        assert.equal(network.properties.address['x-discover'], 'network');
+        assert.equal(network.properties['poll-interval']['x-discover'], undefined);
+
+        const serial = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: withHint,
+            defaults: {name: 'foo'},
+            discovery: {serial: {contains: ['busware']}},
+        });
+        assert.equal(serial.properties.address['x-discover'], 'serial');
+
+        const both = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: withHint,
+            defaults: {name: 'foo'},
+            discovery: {serial: {}, udp: {port: 1}},
+        });
+        assert.deepEqual(both.properties.address['x-discover'], ['network', 'serial']);
+    });
+
+    test('no hint, no marker — an adapter without discovery is not discovery-capable', () => {
+        const schema = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: {...options, address: {...options.address, discover: true}},
+            defaults: {name: 'foo'},
+        });
+        assert.equal(schema.properties.address['x-discover'], undefined);
+    });
+
+    test('`discover: true` is metadata, not a yargs option', () => {
+        const c = parseConfig({
+            pkg,
+            options: {...options, address: {...options.address, discover: true}},
+            defaults: {name: 'foo'},
+            discovery: {ssdp: {}},
+            argv: ['-a', '10.0.0.1'],
+            env: {},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.address, '10.0.0.1');
+        assert.equal(c.discover, undefined, 'the value, not the flag');
+    });
+
     test('they never reach the instance configuration', () => {
         const schema = configSchema({pkg, envPrefix: 'FOO2MQTT', options, defaults: {name: 'foo'}});
-        for (const meta of ['discover', 'discover-json', 'discover-timeout']) {
+        for (const meta of ['discover', 'discover-json', 'discover-timeout', 'discover-address', 'discover-ip']) {
             assert.equal(schema.properties[meta], undefined, meta);
         }
     });

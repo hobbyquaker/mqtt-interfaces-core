@@ -31,6 +31,7 @@ import {
     parseSsdp,
     pool,
     readName,
+    resolveNames,
     serialMatches,
     runDiscovery,
     ssdpSearch,
@@ -100,6 +101,33 @@ function fakeConnect(open = []) {
 }
 
 const FAST = {timeout: 5, tries: 1};
+
+/** A resolver that answers nothing — the default for tests that are not about names. */
+const NO_DNS = {
+    reverse: async () => {
+        throw Object.assign(new Error('ENOTFOUND'), {code: 'ENOTFOUND'});
+    },
+    lookup: async () => [],
+};
+
+/** A resolver built from {ip: [names]} + {name: [ips]}, for the round-trip tests. */
+function fakeDns(ptr = {}, forward = {}) {
+    return {
+        reverse: async (address) => {
+            if (!ptr[address]) {
+                throw Object.assign(new Error('ENOTFOUND'), {code: 'ENOTFOUND'});
+            }
+            return ptr[address];
+        },
+        lookup: async (name) => {
+            const list = forward[name.toLowerCase()];
+            if (!list) {
+                throw Object.assign(new Error('ENOTFOUND'), {code: 'ENOTFOUND'});
+            }
+            return list.map((address) => ({address, family: 4}));
+        },
+    };
+}
 
 describe('pool', () => {
     test('runs everything and never exceeds the concurrency', async () => {
@@ -506,7 +534,7 @@ describe('serial ports', () => {
     };
 
     test('lists the by-id names with the device node they point at', () => {
-        const ports = listSerialPorts({deps: {fs: fakeFs}});
+        const ports = listSerialPorts({deps: {dns: NO_DNS, fs: fakeFs}});
         assert.equal(ports.length, 2);
         assert.deepEqual(
             ports.find((port) => port.id.includes('busware')),
@@ -525,7 +553,7 @@ describe('serial ports', () => {
                 throw new Error('ENOENT');
             },
         };
-        const [port] = listSerialPorts({deps: {fs: io}});
+        const [port] = listSerialPorts({deps: {dns: NO_DNS, fs: io}});
         assert.equal(port.device, '/dev/serial/by-id/usb-busware.de_CUL868-if00');
     });
 
@@ -540,7 +568,7 @@ describe('serial ports', () => {
             realpathSync: (p) => p,
         };
         assert.deepEqual(
-            listSerialPorts({deps: {fs: io}}).map((port) => port.id),
+            listSerialPorts({deps: {dns: NO_DNS, fs: io}}).map((port) => port.id),
             ['cu.SLAB_USBtoUART', 'cu.usbmodem14201'],
         );
     });
@@ -552,7 +580,7 @@ describe('serial ports', () => {
             },
             realpathSync: (p) => p,
         };
-        assert.deepEqual(listSerialPorts({deps: {fs: io}}), []);
+        assert.deepEqual(listSerialPorts({deps: {dns: NO_DNS, fs: io}}), []);
     });
 
     test('serialMatches: every word must be in the name, case insensitive', () => {
@@ -590,7 +618,7 @@ describe('discover: serial', () => {
     test('a plugged-in stick becomes a candidate keyed by its stable name', async () => {
         const found = await discover(
             {serial: {contains: ['busware', 'CUL']}},
-            {timeout: 5, deps: {fs: fakeFs, createSocket: () => fakeSocket([])}},
+            {timeout: 5, deps: {dns: NO_DNS, fs: fakeFs, createSocket: () => fakeSocket([])}},
         );
         assert.equal(found.length, 1);
         assert.equal(found[0].address, '/dev/serial/by-id/usb-busware.de_CUL868-if00');
@@ -602,7 +630,7 @@ describe('discover: serial', () => {
         // the hint of an adapter that speaks to either a local stick or a network CUL
         const found = await discover(
             {serial: {contains: ['busware', 'CUL']}, ports: {cuno: 2323}},
-            {timeout: 5, deps: {fs: fakeFs, createSocket: () => fakeSocket([]), connect: fakeConnect([])}},
+            {timeout: 5, deps: {dns: NO_DNS, fs: fakeFs, createSocket: () => fakeSocket([]), connect: fakeConnect([])}},
         );
         assert.equal(found.length, 1);
         assert.equal(found[0].services, undefined);
@@ -625,7 +653,7 @@ describe('discover: serial', () => {
         ]);
         const found = await discover(
             {serial: {contains: ['busware']}, ssdp: {}},
-            {timeout: 5, deps: {fs: fakeFs, createSocket: () => socket}},
+            {timeout: 5, deps: {dns: NO_DNS, fs: fakeFs, createSocket: () => socket}},
         );
         assert.deepEqual(
             found.map((entry) => entry.address),
@@ -689,7 +717,7 @@ describe('discover', () => {
             {ssdp: {st: 'urn:lge-com:service:webos-second-screen:1'}, ports: {webos: 3000}},
             {
                 timeout: 5,
-                deps: {createSocket: () => socket, connect: fakeConnect(['192.168.1.20:3000'])},
+                deps: {dns: NO_DNS, createSocket: () => socket, connect: fakeConnect(['192.168.1.20:3000'])},
             },
         );
         assert.equal(found.length, 1);
@@ -702,7 +730,7 @@ describe('discover', () => {
         const socket = fakeSocket([{message: ssdpResponse, address: '192.168.1.20'}]);
         const found = await discover(
             {ssdp: {}, ports: {webos: 3000}},
-            {timeout: 5, deps: {createSocket: () => socket, connect: fakeConnect([])}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, connect: fakeConnect([])}},
         );
         assert.deepEqual(found, []);
     });
@@ -711,7 +739,7 @@ describe('discover', () => {
         const socket = fakeSocket([{message: ssdpResponse, address: '192.168.1.20'}]);
         const found = await discover(
             {ssdp: {}, ports: {webos: 3000}, requirePort: false},
-            {timeout: 5, deps: {createSocket: () => socket, connect: fakeConnect([])}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, connect: fakeConnect([])}},
         );
         assert.equal(found.length, 1);
         assert.deepEqual(found[0].services, {webos: false});
@@ -721,7 +749,7 @@ describe('discover', () => {
         const socket = fakeSocket([{message: ssdpResponse, address: '192.168.1.20'}]);
         const found = await discover(
             {ssdp: {match: (headers) => headers.server === 'something else'}},
-            {timeout: 5, deps: {createSocket: () => socket, connect: fakeConnect([])}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, connect: fakeConnect([])}},
         );
         assert.deepEqual(found, []);
     });
@@ -753,7 +781,7 @@ describe('discover', () => {
                     return {ok: true};
                 },
             },
-            {timeout: 5, deps: {createSocket: () => socket, connect: fakeConnect([])}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, connect: fakeConnect([])}},
         );
         assert.equal(found.length, 1);
         assert.equal(found[0].address, '192.168.1.21');
@@ -781,7 +809,7 @@ describe('discover', () => {
         const exec = async () => ({stdout: '? (192.168.1.130) at 0:1a:22:aa:bb:cc on en0 [ethernet]'});
         const found = await discover(
             {oui: ['00:1a:22']},
-            {timeout: 5, deps: {createSocket: () => fakeSocket([]), exec}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => fakeSocket([]), exec}},
         );
         assert.equal(found.length, 1);
         assert.equal(found[0].mac, '00:1a:22:aa:bb:cc');
@@ -796,7 +824,7 @@ describe('discover', () => {
         });
         await discover(
             {udp: {port: 43439, payload: 'x', parse: () => ({})}},
-            {timeout: 5, deps: {createSocket: () => socket, interfaces}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, interfaces}},
         );
         assert.deepEqual([...new Set(socket.sent.map((entry) => entry.address))], ['255.255.255.255', '172.16.23.255']);
     });
@@ -811,7 +839,7 @@ describe('discover', () => {
             {
                 timeout: 5,
                 addresses: ['172.16.24.255'],
-                deps: {createSocket: () => socket, interfaces},
+                deps: {dns: NO_DNS, createSocket: () => socket, interfaces},
             },
         );
         assert.ok(
@@ -830,6 +858,7 @@ describe('discover', () => {
                 timeout: 5,
                 addresses: ['172.16.20.180'],
                 deps: {
+                    dns: NO_DNS,
                     createSocket: () => fakeSocket([]),
                     connect: fakeConnect(['172.16.20.180:9741']),
                     interfaces: () => ({}),
@@ -848,7 +877,12 @@ describe('discover', () => {
             {
                 timeout: 5,
                 addresses: ['172.16.20.181'],
-                deps: {createSocket: () => fakeSocket([]), connect: fakeConnect([]), interfaces: () => ({})},
+                deps: {
+                    dns: NO_DNS,
+                    createSocket: () => fakeSocket([]),
+                    connect: fakeConnect([]),
+                    interfaces: () => ({}),
+                },
             },
         );
         assert.deepEqual(found, []);
@@ -862,7 +896,12 @@ describe('discover', () => {
             {
                 timeout: 5,
                 addresses: ['172.16.24.145'],
-                deps: {createSocket: () => fakeSocket([]), connect: fakeConnect([]), interfaces: () => ({})},
+                deps: {
+                    dns: NO_DNS,
+                    createSocket: () => fakeSocket([]),
+                    connect: fakeConnect([]),
+                    interfaces: () => ({}),
+                },
             },
         );
         assert.deepEqual(found, []);
@@ -875,7 +914,7 @@ describe('discover', () => {
             {
                 timeout: 5,
                 addresses: ['172.16.24.145'],
-                deps: {createSocket: () => socket, connect: fakeConnect([]), interfaces: () => ({})},
+                deps: {dns: NO_DNS, createSocket: () => socket, connect: fakeConnect([]), interfaces: () => ({})},
             },
         );
         assert.equal(found.length, 1);
@@ -894,6 +933,7 @@ describe('discover', () => {
                 timeout: 5,
                 addresses: ['172.16.20.0/29'],
                 deps: {
+                    dns: NO_DNS,
                     createSocket: () => socket,
                     connect: fakeConnect(['172.16.20.5:9741', '192.168.1.20:9741']),
                     interfaces,
@@ -912,7 +952,11 @@ describe('discover', () => {
         const socket = fakeSocket([]);
         await discover(
             {udp: {port: 43439, payload: 'x', parse: () => ({})}},
-            {timeout: 5, addresses: ['172.16.20.0/24'], deps: {createSocket: () => socket, interfaces: () => ({})}},
+            {
+                timeout: 5,
+                addresses: ['172.16.20.0/24'],
+                deps: {dns: NO_DNS, createSocket: () => socket, interfaces: () => ({})},
+            },
         );
         assert.ok(socket.sent.some((entry) => entry.address === '172.16.20.255'));
     });
@@ -922,7 +966,7 @@ describe('discover', () => {
             {message: ssdpResponse, address: '192.168.1.100'},
             {message: ssdpResponse, address: '192.168.1.9'},
         ]);
-        const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket}});
+        const found = await discover({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}});
         assert.deepEqual(
             found.map((entry) => entry.address),
             ['192.168.1.9', '192.168.1.100'],
@@ -932,7 +976,7 @@ describe('discover', () => {
     test('a failing method does not fail the scan', async () => {
         const socket = fakeSocket([]);
         socket.bind = () => setImmediate(() => socket.emit('error', new Error('EACCES')));
-        const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket}});
+        const found = await discover({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}});
         assert.deepEqual(found, []);
     });
 });
@@ -947,7 +991,10 @@ describe('broadcast targets do not kill the scan', () => {
 
     test('ssdp sets SO_BROADCAST before sending', async () => {
         const socket = fakeSocket([{message: response, address: '172.16.23.189'}]);
-        const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket, interfaces}});
+        const found = await discover(
+            {ssdp: {}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, interfaces}},
+        );
         assert.equal(socket.broadcast, true, 'SO_BROADCAST set');
         assert.ok(
             socket.sent.some((entry) => entry.address === '172.16.23.255'),
@@ -961,7 +1008,7 @@ describe('broadcast targets do not kill the scan', () => {
         const socket = fakeSocket([]);
         await discover(
             {mdns: {service: '_googlecast._tcp'}},
-            {timeout: 5, deps: {createSocket: () => socket, interfaces}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, interfaces}},
         );
         assert.equal(socket.broadcast, true);
     });
@@ -975,8 +1022,91 @@ describe('broadcast targets do not kill the scan', () => {
             }
             throw new Error('EINVAL');
         };
-        const found = await discover({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket, interfaces}});
+        const found = await discover(
+            {ssdp: {}},
+            {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket, interfaces}},
+        );
         assert.equal(found.length, 1);
+    });
+});
+
+describe('names (the fqdn/hostname a config should hold)', () => {
+    // the shapes measured on a real network: a proper fqdn, and a bare PTR that only resolves
+    // because the asking host has a search domain
+    const dns = fakeDns(
+        {
+            '172.16.24.145': ['homematic-ccu3.lan.raff.rocks.'],
+            '172.16.20.180': ['audiocast'],
+            '10.0.0.5': ['stale.example.lan'],
+            '10.0.0.6': ['printer.local'],
+            '10.0.0.7': ['-not a hostname-'],
+        },
+        {
+            'homematic-ccu3.lan.raff.rocks': ['172.16.24.145'],
+            'homematic-ccu3': ['172.16.24.145'],
+            audiocast: ['172.16.20.180'],
+            'stale.example.lan': ['10.0.0.99'], // points somewhere else now
+            'printer.local': ['10.0.0.6'],
+        },
+    );
+
+    test('a name that round-trips gives both forms', async () => {
+        assert.deepEqual(await resolveNames('172.16.24.145', {deps: {dns}}), {
+            fqdn: 'homematic-ccu3.lan.raff.rocks',
+            hostname: 'homematic-ccu3',
+        });
+    });
+
+    test('a bare PTR gives the short form only — there is no fqdn to invent', async () => {
+        assert.deepEqual(await resolveNames('172.16.20.180', {deps: {dns}}), {hostname: 'audiocast'});
+    });
+
+    test('a stale PTR that resolves elsewhere is not a name for this device', async () => {
+        assert.deepEqual(await resolveNames('10.0.0.5', {deps: {dns}}), {});
+    });
+
+    test('.local is skipped even though it round-trips here', async () => {
+        // it resolves through Bonjour/nss-mdns on this host and nowhere else — a container on
+        // the same host would fail to resolve it
+        assert.deepEqual(await resolveNames('10.0.0.6', {deps: {dns}}), {});
+    });
+
+    test('a PTR that is not a hostname is ignored', async () => {
+        assert.deepEqual(await resolveNames('10.0.0.7', {deps: {dns}}), {});
+    });
+
+    test('no PTR zone, no names, no error', async () => {
+        assert.deepEqual(await resolveNames('192.168.1.1', {deps: {dns}}), {});
+        assert.deepEqual(await resolveNames('192.168.1.1', {deps: {dns: NO_DNS}}), {});
+    });
+
+    test('a serial candidate has no names to look up', async () => {
+        assert.deepEqual(await resolveNames('/dev/serial/by-id/usb-busware.de_CUL868-if00', {deps: {dns}}), {});
+    });
+
+    test('discover attaches them to every network candidate', async () => {
+        const socket = fakeSocket([
+            {message: Buffer.from('HTTP/1.1 200 OK\r\nSERVER: x\r\n\r\n'), address: '172.16.24.145'},
+        ]);
+        const [found] = await discover({ssdp: {}}, {timeout: 5, deps: {dns, createSocket: () => socket}});
+        assert.equal(found.address, '172.16.24.145', 'the address stays the identity');
+        assert.equal(found.fqdn, 'homematic-ccu3.lan.raff.rocks');
+        assert.equal(found.hostname, 'homematic-ccu3');
+    });
+
+    test('names: false skips the lookup entirely', async () => {
+        const socket = fakeSocket([
+            {message: Buffer.from('HTTP/1.1 200 OK\r\nSERVER: x\r\n\r\n'), address: '172.16.24.145'},
+        ]);
+        const [found] = await discover({ssdp: {}}, {timeout: 5, names: false, deps: {dns, createSocket: () => socket}});
+        assert.equal(found.fqdn, undefined);
+    });
+
+    test('describe puts the name next to the address', () => {
+        assert.match(
+            describeEntry({address: '172.16.24.145', fqdn: 'homematic-ccu3.lan.raff.rocks', sources: ['udp']}),
+            /^172\.16\.24\.145 {2}homematic-ccu3\.lan\.raff\.rocks/,
+        );
     });
 });
 
@@ -985,13 +1115,13 @@ describe('discoverOne / --address auto', () => {
 
     test('exactly one is returned', async () => {
         const socket = fakeSocket([{message: response, address: '192.168.1.20'}]);
-        const device = await discoverOne({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket}});
+        const device = await discoverOne({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}});
         assert.equal(device.address, '192.168.1.20');
     });
 
     test('none is an error', async () => {
         await assert.rejects(
-            () => discoverOne({ssdp: {}}, {timeout: 5, deps: {createSocket: () => fakeSocket([])}}),
+            () => discoverOne({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => fakeSocket([])}}),
             /no device found/,
         );
     });
@@ -1002,7 +1132,7 @@ describe('discoverOne / --address auto', () => {
             {message: response, address: '192.168.1.21'},
         ]);
         await assert.rejects(
-            () => discoverOne({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket}}),
+            () => discoverOne({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}}),
             /2 devices found \(192\.168\.1\.20, 192\.168\.1\.21\)/,
         );
     });
@@ -1010,6 +1140,44 @@ describe('discoverOne / --address auto', () => {
 
 describe('autoAddress', () => {
     const response = Buffer.from('HTTP/1.1 200 OK\r\nSERVER: WebOS\r\n\r\n');
+
+    test('returns the qualified name when the device has one', async () => {
+        const dns = fakeDns({'172.16.24.145': ['ccu.lan.example']}, {'ccu.lan.example': ['172.16.24.145']});
+        const socket = fakeSocket([{message: response, address: '172.16.24.145'}]);
+        assert.equal(
+            await autoAddress({ssdp: {}}, {timeout: 5, deps: {dns, createSocket: () => socket}}),
+            'ccu.lan.example',
+        );
+    });
+
+    test('--discover-ip pins the address instead', async () => {
+        const dns = fakeDns({'172.16.24.145': ['ccu.lan.example']}, {'ccu.lan.example': ['172.16.24.145']});
+        const socket = fakeSocket([{message: response, address: '172.16.24.145'}]);
+        assert.equal(
+            await autoAddress(
+                {ssdp: {}},
+                {timeout: 5, config: {discoverIp: true}, deps: {dns, createSocket: () => socket}},
+            ),
+            '172.16.24.145',
+        );
+    });
+
+    test('the bare hostname is never preferred — it needs the asker’s search domain', async () => {
+        const dns = fakeDns({'172.16.20.180': ['audiocast']}, {audiocast: ['172.16.20.180']});
+        const socket = fakeSocket([{message: response, address: '172.16.20.180'}]);
+        assert.equal(
+            await autoAddress({ssdp: {}}, {timeout: 5, deps: {dns, createSocket: () => socket}}),
+            '172.16.20.180',
+        );
+    });
+
+    test('a device dns knows nothing about keeps its address', async () => {
+        const socket = fakeSocket([{message: response, address: '172.16.24.145'}]);
+        assert.equal(
+            await autoAddress({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}}),
+            '172.16.24.145',
+        );
+    });
 
     test('takes --discover-timeout and --discover-address from the config', async () => {
         const socket = fakeSocket([{message: response, address: '172.16.24.145'}]);
@@ -1020,10 +1188,10 @@ describe('autoAddress', () => {
             {ssdp: {}},
             {
                 config: {discoverTimeout: 0.005, discoverAddress: ['172.16.24.255']},
-                deps: {createSocket: () => socket, interfaces},
+                deps: {dns: NO_DNS, createSocket: () => socket, interfaces},
             },
         );
-        assert.equal(address, '172.16.24.145');
+        assert.equal(address, '172.16.24.145', 'no dns, so the address it is');
         assert.ok(
             socket.sent.some((entry) => entry.address === '172.16.24.255'),
             'probed the named address',
@@ -1056,7 +1224,7 @@ describe('--discover output', () => {
             exit: (value) => {
                 code = value;
             },
-            deps: {createSocket: () => socket},
+            deps: {dns: NO_DNS, createSocket: () => socket},
         });
         assert.equal(code, 0);
         assert.equal(lines.length, 1);
@@ -1073,7 +1241,7 @@ describe('--discover output', () => {
             config: {discoverTimeout: 0.005, discoverJson: true},
             print: (line) => lines.push(line),
             exit: () => {},
-            deps: {createSocket: () => socket},
+            deps: {dns: NO_DNS, createSocket: () => socket},
         });
         const parsed = JSON.parse(lines[0]);
         assert.equal(parsed[0].address, '10.0.0.5');
@@ -1086,7 +1254,7 @@ describe('--discover output', () => {
             config: {discoverTimeout: 0.005},
             print: (line) => lines.push(line),
             exit: () => {},
-            deps: {createSocket: () => fakeSocket([])},
+            deps: {dns: NO_DNS, createSocket: () => fakeSocket([])},
         });
         assert.deepEqual(lines, ['nothing found']);
     });

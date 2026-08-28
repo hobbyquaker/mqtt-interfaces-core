@@ -442,23 +442,36 @@ export const DISCOVERY = {
   ports: {webos: 3000},
 };
 
-export default parseConfig({pkg, options: OPTIONS, discovery: true, defaults: {name: 'lgtv'}});
+export const OPTIONS = {
+  // `discover: true` marks the property the scan fills — the one that also accepts "auto"
+  tv: {alias: 'a', type: 'string', describe: 'address of the tv, or "auto"', discover: true},
+  // …
+};
+
+export default parseConfig({pkg, options: OPTIONS, discovery: DISCOVERY, defaults: {name: 'lgtv'}});
 ```
 
-`discovery: true` adds `--discover`, `--discover-json`, `--discover-timeout` and
-`--discover-address` (they are meta options: never written to an env file, never part of
-`--config-schema`). A few lines in `index.js` use them:
+Passing the hint as `discovery` adds `--discover`, `--discover-json`, `--discover-timeout`,
+`--discover-address` and `--discover-ip` (meta options: never written to an env file, never part
+of an instance configuration) — and marks the option flagged `discover: true` with
+**`x-discover`** in `--config-schema`, whose value is the kind of scan the hint asks for:
+`"network"`, `"serial"`, or both. That marker is how a management UI knows an adapter can be
+discovered and which affordances to show (she I13); a schema without one is not
+discovery-capable. A few lines in `index.js` use the options:
 
 ```js
 import {runDiscovery, autoAddress} from 'mqtt-interfaces-core';
 import config, {DISCOVERY} from './config.js';
 
+// before handleInstall(): `--install --tv auto` then persists what was found, instead of
+// leaving every service start to scan the network and fail when the device is briefly away
 if (config.discover) {
   await runDiscovery({hint: DISCOVERY, config, log}); // prints and exits
 }
 if (config.tv === 'auto') {
   try {
-    // `config` lets the scan honour --discover-timeout and --discover-address
+    // `config` lets the scan honour --discover-timeout, --discover-address and --discover-ip;
+    // the result is the device's fqdn when dns knows it, its address otherwise
     config.tv = await autoAddress(DISCOVERY, {config, log});
   } catch (err) {
     log.error('--tv auto:', err.message); // none, or several — never guess
@@ -508,6 +521,24 @@ invisible; with it, a soundbar one VLAN away is found by name and model. Do not 
 though: measured over 20 second browses through a reflector, the same device answered one and
 not the next, so `--discover-address` stays the dependable route. Each query is repeated `tries`
 times (3) spread over the timeout for the same reason.
+
+**Names.** Every network candidate carries the names it answers to, verified by a round trip:
+reverse the address, resolve each name back, keep it only when the address is among the answers.
+That one check subsumes every "is DNS working here" question — a resolver can serve public names
+perfectly and have no PTR zone for the LAN, or a PTR pointing at a name nothing resolves.
+
+| field      | when it is there                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `address`  | always — the identity of the candidate, never replaced                                                                 |
+| `fqdn`     | the qualified name round-trips: safe to put in a config, and it outlives a dhcp lease                                  |
+| `hostname` | the short label round-trips _here_ — which depends on the asking host's search list, so it is offered, never preferred |
+
+The short form is the trap: `audiocast` resolves on a host with `search example.lan` and nowhere
+else, so a config holding it breaks the moment the adapter runs elsewhere. `--address auto` takes
+the `fqdn` when there is one and the address otherwise, `--discover-ip` pins the address, and a
+management UI gets all three and lets the user choose (she I13). `.local` names are skipped —
+they verify here and then fail inside a container on the same host — and the forward half uses
+`dns.lookup`, the resolution path an adapter actually uses at runtime.
 
 **Serial sticks.** A USB adapter needs no scanning: udev already named it, and
 `/dev/serial/by-id/usb-busware.de_CUL868-if00` is the name to configure an adapter with — it
