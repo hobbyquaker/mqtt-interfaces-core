@@ -122,6 +122,7 @@ xyz2mqtt/
 ├── CHANGELOG.md        `## x.y.z` sections; the release notes are generated from them
 ├── ROADMAP.md / AGENTS.md   plan and agent notes (optional but the fleet does it)
 ├── Dockerfile          node:22-alpine, env config (template below)
+├── .dockerignore       node_modules, .git, .github, *.md, test, scripts, deploy.sh
 ├── deploy.sh           dev deploy to a host by tarball (from cul2mqtt)
 ├── eslint.config.js, .prettierrc, .editorconfig   copies of the core's
 └── .github/workflows/ci.yml, release.yml, .github/release-notes.js   copies of the core's
@@ -457,8 +458,10 @@ device`), `device.via_device` pointing at the bridge's id, and optionally its ow
   bump `version` in `package.json` + lockfile, add a `## x.y.z` section to `CHANGELOG.md`
   (`### Breaking` / `### Added` / `### Changed` / `### Fixed`), commit, `git tag vX.Y.Z`,
   `git push --tags`. The workflow lints, tests, publishes to npm with provenance (trusted
-  publishing — configure the repo as a trusted publisher on npmjs.com once) and creates the GitHub
-  release with the CHANGELOG section plus the commits since the previous tag.
+  publishing — configure the repo as a trusted publisher on npmjs.com once), builds and pushes the
+  multi-arch Docker image to ghcr.io (see below) and creates the GitHub release with the CHANGELOG
+  section plus the commits since the previous tag. Every adapter ships both: npm **and** an image.
+  The core and other libraries are npm only — they have no `Dockerfile` and no `docker` job.
 - Versioning: semver; renaming topics or options is a major; new items/options a minor; fixes a
   patch. Keep `engines.node` in sync with the core.
 
@@ -480,8 +483,58 @@ ENTRYPOINT ["node", "index.js"]
 ```
 
 Config only via environment; a state directory as a volume when the adapter persists anything
-(`XYZ2MQTT_STATE_DIR=/data`, `VOLUME /data`); `--restart unless-stopped` so
-`maintenance/set/restart` comes back. Serial devices: `--device` + `--group-add`.
+(`XYZ2MQTT_STATE_DIR=/data`, `VOLUME /data` — with `RUN mkdir /data && chown node:node /data`
+before it, otherwise docker creates the mount point root-owned and the `node` user cannot write);
+`--restart unless-stopped` so `maintenance/set/restart` comes back. Serial devices: `--device` +
+`--group-add`. Host networking when the device protocol needs multicast, broadcast or callbacks.
+
+Every adapter publishes its image to `ghcr.io/hobbyquaker/<repo>` — the packages show up on the
+GitHub project page, no extra registry account, no rate limit for pulls. The release workflow does
+it on every tag, for amd64, arm64 and armv7 (Raspberry Pi), from this job:
+
+```yaml
+permissions:
+  contents: write
+  packages: write # ghcr.io
+  id-token: write
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+```
+
+`GITHUB_TOKEN` is enough — no secret to configure. The `github-release` job needs
+`[npm, docker]`, so a failed image build fails the release. The first push creates the package
+as private: make it public once under _Package settings → Change visibility_, and link it to the
+repository. Tags are `x.y.z`, `x.y` and `latest`; qemu makes the arm builds slow but keeps the
+workflow to a single runner. Document the `docker run` line in the README next to the npm and
+systemd install.
 
 ### 11. Development deploys
 
@@ -496,6 +549,8 @@ npm version.
 - [ ] `npm run lint`, `npm test` green; CI workflow in place.
 - [ ] README: install (`npm install -g`, `--install`, Docker), options table, topics with payload
       examples, Home Assistant section, `--config-schema` mention; CHANGELOG started.
+- [ ] `Dockerfile` + `.dockerignore` present, the release workflow has the `docker` job, and the
+      ghcr package is public after the first tag.
 - [ ] Every credential option has `secret: true`; every user-maintained file has `file: {…}` with a
       shipped example (and a schema when the format allows one).
 - [ ] `mqttInterfaces` field in `package.json`; `files` lists everything the runtime and the

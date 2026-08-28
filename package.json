@@ -1,6 +1,6 @@
 {
   "name": "mqtt-interfaces-core",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Core library for writing xyz2mqtt interfaces following the mqtt-smarthome convention",
   "keywords": [
     "mqtt",

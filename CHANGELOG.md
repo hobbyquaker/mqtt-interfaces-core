@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1
+
+### Changed
+
+- README: every adapter publishes a multi-arch Docker image to `ghcr.io/hobbyquaker/<repo>` on
+  every tag — the `docker` job for `release.yml`, `.dockerignore` in the project skeleton, the
+  root-owned `/data` pitfall (`RUN mkdir /data && chown node:node /data`) and a checklist item for
+  the ghcr package. Documentation only, the core itself stays npm-only.
+
 ## 0.8.0
 
 ### Added
