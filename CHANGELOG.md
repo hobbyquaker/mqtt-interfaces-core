@@ -13,8 +13,14 @@
 - `parseConfig({discovery: true})` adds `--discover`, `--discover-json` and `--discover-timeout`
   (meta options, never part of an instance configuration). `--discover` is exempt from mandatory
   options — the address it goes looking for must not be required to run it.
-- `runDiscovery({hint, config, log})` for `--discover`, `autoAddress(hint)` for `--address auto`
-  (refuses to guess when none or several devices answer), `discover()` / `discoverOne()`, and the
+- `--discover-address` (repeatable): probe a device or another subnet's broadcast address
+  directly. Probes otherwise go to the method's own group/broadcast address plus the broadcast
+  address of every local subnet — nothing of that crosses a router, and a device one hop away
+  (a CCU on its own VLAN) is reachable no other way.
+- `runDiscovery({hint, config, log})` for `--discover`, `autoAddress(hint, {config, log})` for
+  `--address auto`
+  (refuses to guess when none or several devices answer; with `config` it honours
+  `--discover-timeout` and `--discover-address`), `discover()` / `discoverOne()`, and the
   pieces on their own: `ssdpSearch`, `mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`,
   `localSubnets`, `subnetHosts`, `pool`.
 

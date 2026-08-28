@@ -13,6 +13,7 @@ import {
     DNS_TYPE,
     arpTable,
     assembleServices,
+    autoAddress,
     describe as describeEntry,
     discover,
     discoverOne,
@@ -350,6 +351,21 @@ describe('udpProbe (the hm-discover pattern)', () => {
         assert.equal(found.length, 1);
     });
 
+    test('an address list is probed target by target', async () => {
+        const socket = fakeSocket([]);
+        await udpProbe({
+            port: 43439,
+            payload: PROBE,
+            address: ['255.255.255.255', '172.16.23.255', '172.16.24.145'],
+            ...FAST,
+            createSocket: () => socket,
+        });
+        assert.deepEqual(
+            socket.sent.map((entry) => entry.address),
+            ['255.255.255.255', '172.16.23.255', '172.16.24.145'],
+        );
+    });
+
     test('a parser that throws does not take the scan down', async () => {
         const socket = fakeSocket([{message: reply, address: '192.168.1.130'}]);
         const found = await udpProbe({
@@ -519,6 +535,40 @@ describe('discover', () => {
         assert.deepEqual(found[0].sources, ['oui']);
     });
 
+    test('the probe also goes to every local subnet broadcast, not only 255.255.255.255', async () => {
+        // 255.255.255.255 is dropped by some stacks and never leaves the wire on others
+        const socket = fakeSocket([]);
+        const interfaces = () => ({
+            eth0: [{family: 'IPv4', address: '172.16.23.226', netmask: '255.255.255.0', internal: false}],
+        });
+        await discover(
+            {udp: {port: 43439, payload: 'x', parse: () => ({})}},
+            {timeout: 5, deps: {createSocket: () => socket, interfaces}},
+        );
+        assert.deepEqual([...new Set(socket.sent.map((entry) => entry.address))], ['255.255.255.255', '172.16.23.255']);
+    });
+
+    test('--discover-address reaches a device a router away', async () => {
+        const socket = fakeSocket([{message: Buffer.from('answer'), address: '172.16.24.145'}]);
+        const interfaces = () => ({
+            eth0: [{family: 'IPv4', address: '172.16.23.226', netmask: '255.255.255.0', internal: false}],
+        });
+        const found = await discover(
+            {udp: {port: 43439, payload: 'x', parse: () => ({ccu: true})}},
+            {
+                timeout: 5,
+                addresses: ['172.16.24.255'],
+                deps: {createSocket: () => socket, interfaces},
+            },
+        );
+        assert.ok(
+            socket.sent.some((entry) => entry.address === '172.16.24.255'),
+            'probed the other subnet',
+        );
+        assert.equal(found[0].address, '172.16.24.145');
+        assert.equal(found[0].ccu, true);
+    });
+
     test('results are sorted by address', async () => {
         const socket = fakeSocket([
             {message: ssdpResponse, address: '192.168.1.100'},
@@ -563,6 +613,29 @@ describe('discoverOne / --address auto', () => {
         await assert.rejects(
             () => discoverOne({ssdp: {}}, {timeout: 5, deps: {createSocket: () => socket}}),
             /2 devices found \(192\.168\.1\.20, 192\.168\.1\.21\)/,
+        );
+    });
+});
+
+describe('autoAddress', () => {
+    const response = Buffer.from('HTTP/1.1 200 OK\r\nSERVER: WebOS\r\n\r\n');
+
+    test('takes --discover-timeout and --discover-address from the config', async () => {
+        const socket = fakeSocket([{message: response, address: '172.16.24.145'}]);
+        const interfaces = () => ({
+            eth0: [{family: 'IPv4', address: '172.16.23.226', netmask: '255.255.255.0', internal: false}],
+        });
+        const address = await autoAddress(
+            {ssdp: {}},
+            {
+                config: {discoverTimeout: 0.005, discoverAddress: ['172.16.24.255']},
+                deps: {createSocket: () => socket, interfaces},
+            },
+        );
+        assert.equal(address, '172.16.24.145');
+        assert.ok(
+            socket.sent.some((entry) => entry.address === '172.16.24.255'),
+            'probed the named address',
         );
     });
 });

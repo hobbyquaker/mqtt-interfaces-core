@@ -445,9 +445,9 @@ export const DISCOVERY = {
 export default parseConfig({pkg, options: OPTIONS, discovery: true, defaults: {name: 'lgtv'}});
 ```
 
-`discovery: true` adds `--discover`, `--discover-json` and `--discover-timeout` (they are meta
-options: never written to an env file, never part of `--config-schema`). Three lines in
-`index.js` use them:
+`discovery: true` adds `--discover`, `--discover-json`, `--discover-timeout` and
+`--discover-address` (they are meta options: never written to an env file, never part of
+`--config-schema`). A few lines in `index.js` use them:
 
 ```js
 import {runDiscovery, autoAddress} from 'mqtt-interfaces-core';
@@ -457,7 +457,13 @@ if (config.discover) {
   await runDiscovery({hint: DISCOVERY, config, log}); // prints and exits
 }
 if (config.tv === 'auto') {
-  config.tv = await autoAddress(DISCOVERY, {log}); // throws on none and on several
+  try {
+    // `config` lets the scan honour --discover-timeout and --discover-address
+    config.tv = await autoAddress(DISCOVERY, {config, log});
+  } catch (err) {
+    log.error('--tv auto:', err.message); // none, or several — never guess
+    process.exit(1);
+  }
 }
 ```
 
@@ -466,19 +472,26 @@ not be required to run it.
 
 The hint:
 
-| key     | what it does                                                                                                                                        |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ssdp`  | `{st, match(headers, address)}` — M-SEARCH to 239.255.255.250:1900, answers become candidates                                                       |
-| `mdns`  | `{service: '_googlecast._tcp', match(entry)}` — DNS-SD browse; PTR → SRV → A is resolved into `{address, name, port, txt}`                          |
-| `udp`   | `{port, payload, parse(message, rinfo), address}` — broadcast probe; `parse` returns the fields or `null` to drop                                   |
-| `ports` | `{label: port}` probed on every candidate → `services: {label: true\|false}`; a candidate with none open is dropped (`requirePort: false` keeps it) |
-| `oui`   | MAC prefixes — matching entries of the ARP cache become candidates                                                                                  |
-| `probe` | `async (address, entry) => fields \| null` — the last word; `null` drops the candidate                                                              |
+| key           | what it does                                                                                                                                        |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssdp`        | `{st, match(headers, address)}` — M-SEARCH to 239.255.255.250:1900, answers become candidates                                                       |
+| `mdns`        | `{service: '_googlecast._tcp', match(entry)}` — DNS-SD browse; PTR → SRV → A is resolved into `{address, name, port, txt}`                          |
+| `udp`         | `{port, payload, parse(message, rinfo), address}` — broadcast probe; `parse` returns the fields or `null` to drop                                   |
+| `ports`       | `{label: port}` probed on every candidate → `services: {label: true\|false}`; a candidate with none open is dropped (`requirePort: false` keeps it) |
+| `requirePort` | `false` keeps a candidate whose declared ports are all closed — the announcement was proof enough                                                   |
+| `oui`         | MAC prefixes — matching entries of the ARP cache become candidates                                                                                  |
+| `probe`       | `async (address, entry) => fields \| null` — the last word; `null` drops the candidate                                                              |
 
 Every declared method runs in parallel and contributes candidates; they are merged per address
 (`sources: ['mdns', 'oui']` records who found it). A TCP sweep of the local subnets runs only
 when `ports` are declared and nothing else answered (`sweep: true` forces it, `false` disables
 it); subnets larger than 4096 hosts are skipped with a warning rather than swept.
+
+Probes go to the method's own group or broadcast address **and** to the broadcast address of
+every local subnet — `255.255.255.255` is dropped by some stacks and never leaves the wire on
+others. None of that crosses a router, though: for a device one hop away, `--discover-address`
+names it (`--discover-address 172.16.24.145`) or names another subnet's broadcast address. That
+is not a rare case — a CCU on its own VLAN is exactly how the pilot below is deployed.
 
 The worked example is Homematic, straight from
 [hm-discover](https://github.com/hobbyquaker/hm-discover): a magic datagram to UDP 43439, and the
@@ -504,9 +517,15 @@ export const DISCOVERY = {
 ```
 
 ```
-$ hm2mqtt --discover
-192.168.1.130  eQ3-HM-CCU2-App  serial KEQ0112345  [ReGaHSS BidCos-RF HmIP-RF VirtualDevices]  (udp)
+$ hm2mqtt --discover --discover-address 172.16.24.145
+172.16.24.145  eQ3-HmIP-CCU3-App  serial 3014F711A0001F58A992F585  [ReGa BidCos-RF BidCos-Wired HmIP-RF VirtualDevices]  (udp)
 ```
+
+`--ccu-address auto` uses the same scan and the same options. Two bugs the port to a hint fixed:
+hm-discover's `checkservice` passed `this.timeout`, which is `undefined` there, so the TCP probes
+had no timeout and their sockets were never destroyed; and its probe datagram was built as
+`Buffer.from([..., 'e', 'Q', '3', ...])`, where each string becomes `0x00` — a CCU still answers,
+but with a shorter reply that has the firmware version cut off.
 
 For anything the hint cannot express, the pieces are exported on their own: `ssdpSearch`,
 `mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`, `localSubnets`, `subnetHosts` and `pool` (the

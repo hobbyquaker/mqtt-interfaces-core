@@ -73,8 +73,11 @@ the convention itself is specified in
   unit tests against faked sockets; mDNS, the ARP parser and the subnet
   maths verified against a real network, SSDP only against captures (no
   UPnP responder answers on this LAN — checked with an independent client).
-  **Open**: no adapter uses it yet — the pilots below are the next step, and
-  the hint shape is not frozen until two of them are wired up.
+  First pilot wired up and verified end to end: hm2mqtt 3.3.0 finds a real
+  CCU3 (`--discover`, `-a auto`), which also produced `--discover-address` —
+  a broadcast never crosses a router, and a CCU on its own VLAN is the normal
+  case. **Open**: one more pilot (lgsb2mqtt or lgtv2mqtt) before the hint shape
+  is final; SSDP is still only proven against captures.
 - [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared
@@ -113,11 +116,12 @@ the convention itself is specified in
 4. Spec 2.x in the umbrella repo is written _from_ what the core does (the
    lib and the two pilots are the living draft).
 5. HA discovery publisher + CI validation (B-8).
-6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`).
-   The pilots are open: hm2mqtt (the eQ-3 UDP probe of
+6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`),
+   ~~first pilot hm2mqtt 3.3.0~~ (the eQ-3 UDP probe of
    [hm-discover](https://github.com/hobbyquaker/hm-discover), the worked example
-   in README §8), lgsb2mqtt (`_googlecast._tcp` + port 9741) and lgtv2mqtt
-   (SSDP webOS ST). Wire two of them before calling the hint shape final.
+   in README §8). Second pilot open: lgsb2mqtt (`_googlecast._tcp` + port 9741)
+   or lgtv2mqtt (SSDP webOS ST) — the latter would also be the first real test
+   of the SSDP path.
 7. `--install` module, shared tooling package.
 
 ## 0.3.0 — needed by alexa-remote-mqtt 2.0 (done)
