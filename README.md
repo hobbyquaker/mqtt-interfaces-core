@@ -430,10 +430,10 @@ device`), `device.via_device` pointing at the bridge's id, and optionally its ow
 
 ### 8. Device discovery — lib/discovery.js
 
-Finding the device on the network is the same job in every adapter — an SSDP M-SEARCH, a DNS-SD
-browse, a vendor's UDP broadcast probe, a sweep of the local subnet, a look at the ARP cache — so
-the core owns the sockets, the rate limiting, the timeouts and the merging, and the adapter only
-declares what its devices look like:
+Finding the device is the same job in every adapter — an SSDP M-SEARCH, a DNS-SD browse, a
+vendor's UDP broadcast probe, a sweep of the local subnet, a look at the ARP cache, or, for a USB
+stick, the name udev gave it — so the core owns the sockets, the rate limiting, the timeouts and
+the merging, and the adapter only declares what its devices look like:
 
 ```js
 // config.js
@@ -480,6 +480,7 @@ The hint:
 | `ports`       | `{label: port}` probed on every candidate → `services: {label: true\|false}`; a candidate with none open is dropped (`requirePort: false` keeps it) |
 | `requirePort` | `false` keeps a candidate whose declared ports are all closed — the announcement was proof enough                                                   |
 | `oui`         | MAC prefixes — matching entries of the ARP cache become candidates                                                                                  |
+| `serial`      | `{contains: ['busware', 'CUL'], match, dir}` — USB serial adapters from `/dev/serial/by-id`                                                         |
 | `probe`       | `async (address, entry) => fields \| null` — the last word; `null` drops the candidate                                                              |
 
 Every declared method runs in parallel and contributes candidates; they are merged per address
@@ -507,6 +508,22 @@ invisible; with it, a soundbar one VLAN away is found by name and model. Do not 
 though: measured over 20 second browses through a reflector, the same device answered one and
 not the next, so `--discover-address` stays the dependable route. Each query is repeated `tries`
 times (3) spread over the timeout for the same reason.
+
+**Serial sticks.** A USB adapter needs no scanning: udev already named it, and
+`/dev/serial/by-id/usb-busware.de_CUL868-if00` is the name to configure an adapter with — it
+survives a replug and a reboot, while the `/dev/ttyACM0` it points at can swap places with
+another stick's. So `serial` filters that directory (`contains`, all words, case-insensitive;
+`match` for a regexp or a predicate) and yields the stable path as the candidate's address, with
+the device node it resolves to alongside:
+
+```
+$ cul2mqtt --discover
+/dev/serial/by-id/usb-busware.de_CUL868-if00  → /dev/ttyACM0  (serial)
+```
+
+Such a candidate is exempt from `ports` and the sweep — there is nothing to knock on, being
+plugged in is the proof. macOS has no by-id directory, so `/dev/cu.usb*` is listed instead, where
+the name is all there is; other platforms find nothing rather than guess.
 
 The worked example is Homematic, straight from
 [hm-discover](https://github.com/hobbyquaker/hm-discover): a magic datagram to UDP 43439, and the

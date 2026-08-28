@@ -79,8 +79,11 @@ the convention itself is specified in
   survived both without a change; what the real network added was
   `--discover-address` (a device or a `10.0.1.0/24` range — nothing broadcast
   or multicast crosses a router, and both pilots' devices live on their own
-  VLAN) and the mDNS group listener for reflected answers. **Open**: SSDP is
-  the one method still unproven against hardware — lgtv2mqtt would settle it.
+  VLAN) and the mDNS group listener for reflected answers. A third pilot,
+  cul2mqtt 1.2.0, took discovery off the network entirely: a USB stick is found
+  by the name udev gave it (`serial` hint), which also settled that a candidate
+  is not always an ip address. **Open**: SSDP is the one method still unproven
+  against hardware — lgtv2mqtt would settle it.
 - [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared

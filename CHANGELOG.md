@@ -23,7 +23,12 @@
   `enable-reflector`, bridging two VLANs — arrives as multicast there and never as unicast to the
   query's source port, so without the second socket every reflected device stays invisible. The
   browse falls back to the sending socket alone when 5353 cannot be shared.
-- `parseCidr`, `localBroadcasts` exported.
+- `serial` hint: USB adapters from `/dev/serial/by-id`, filtered by `contains` (all words,
+  case-insensitive) or `match` (regexp or predicate). The candidate's address is the stable by-id
+  path — the one worth putting in a config, since the `/dev/ttyACM0` it points at can swap places
+  with another stick's — and the resolved device node comes along as `device`. Serial candidates
+  are exempt from `ports` and the sweep: being plugged in is the proof. `/dev/cu.usb*` on macOS.
+- `parseCidr`, `localBroadcasts`, `listSerialPorts`, `serialMatches` exported.
 - `runDiscovery({hint, config, log})` for `--discover`, `autoAddress(hint, {config, log})` for
   `--address auto`
   (refuses to guess when none or several devices answer; with `config` it honours

@@ -20,6 +20,7 @@ import {
     encodeName,
     encodeQuery,
     intToIp,
+    listSerialPorts,
     ipToInt,
     localSubnets,
     mdnsQuery,
@@ -30,6 +31,7 @@ import {
     parseSsdp,
     pool,
     readName,
+    serialMatches,
     runDiscovery,
     ssdpSearch,
     subnetHosts,
@@ -457,6 +459,151 @@ describe('udpProbe (the hm-discover pattern)', () => {
             createSocket: () => socket,
         });
         assert.deepEqual(found, []);
+    });
+});
+
+describe('serial ports', () => {
+    // what /dev/serial/by-id looks like on a pi with a CUL and a zigbee stick plugged in
+    const byId = {
+        'usb-busware.de_CUL868-if00': '/dev/ttyACM0',
+        'usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_abc123-if00-port0': '/dev/ttyUSB0',
+    };
+    const fakeFs = {
+        readdirSync: (dir) => {
+            if (dir === '/dev/serial/by-id') {
+                return Object.keys(byId);
+            }
+            throw Object.assign(new Error('ENOENT'), {code: 'ENOENT'});
+        },
+        realpathSync: (link) => byId[link.split('/').pop()],
+    };
+
+    test('lists the by-id names with the device node they point at', () => {
+        const ports = listSerialPorts({deps: {fs: fakeFs}});
+        assert.equal(ports.length, 2);
+        assert.deepEqual(
+            ports.find((port) => port.id.includes('busware')),
+            {
+                id: 'usb-busware.de_CUL868-if00',
+                path: '/dev/serial/by-id/usb-busware.de_CUL868-if00',
+                device: '/dev/ttyACM0',
+            },
+        );
+    });
+
+    test('a dangling symlink keeps the name', () => {
+        const io = {
+            readdirSync: (dir) => (dir === '/dev/serial/by-id' ? ['usb-busware.de_CUL868-if00'] : []),
+            realpathSync: () => {
+                throw new Error('ENOENT');
+            },
+        };
+        const [port] = listSerialPorts({deps: {fs: io}});
+        assert.equal(port.device, '/dev/serial/by-id/usb-busware.de_CUL868-if00');
+    });
+
+    test('without a by-id directory it falls back to /dev/cu.usb* (macOS)', () => {
+        const io = {
+            readdirSync: (dir) => {
+                if (dir === '/dev') {
+                    return ['null', 'cu.usbmodem14201', 'tty.usbmodem14201', 'cu.SLAB_USBtoUART'];
+                }
+                throw new Error('ENOENT');
+            },
+            realpathSync: (p) => p,
+        };
+        assert.deepEqual(
+            listSerialPorts({deps: {fs: io}}).map((port) => port.id),
+            ['cu.SLAB_USBtoUART', 'cu.usbmodem14201'],
+        );
+    });
+
+    test('a host with no serial devices at all is empty, not an error', () => {
+        const io = {
+            readdirSync: () => {
+                throw new Error('ENOENT');
+            },
+            realpathSync: (p) => p,
+        };
+        assert.deepEqual(listSerialPorts({deps: {fs: io}}), []);
+    });
+
+    test('serialMatches: every word must be in the name, case insensitive', () => {
+        const cul = {id: 'usb-busware.de_CUL868-if00'};
+        const zigbee = {id: 'usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_abc123-if00-port0'};
+        assert.equal(serialMatches(cul, {contains: ['busware', 'CUL']}), true);
+        assert.equal(serialMatches(zigbee, {contains: ['busware', 'CUL']}), false);
+        // a CUL clone without busware in the name is not this stick
+        assert.equal(serialMatches({id: 'usb-1a86_CUL_clone-if00'}, {contains: ['busware', 'CUL']}), false);
+    });
+
+    test('serialMatches: a regexp or a function work too', () => {
+        const cul = {id: 'usb-busware.de_CUL868-if00'};
+        assert.equal(serialMatches(cul, {match: /busware.*cul/i}), true);
+        assert.equal(serialMatches(cul, {match: /nanoCUL/}), false);
+        assert.equal(serialMatches(cul, {match: (port) => port.id.endsWith('-if00')}), true);
+    });
+
+    test('an empty spec matches everything', () => {
+        assert.equal(serialMatches({id: 'anything'}), true);
+    });
+});
+
+describe('discover: serial', () => {
+    const fakeFs = {
+        readdirSync: (dir) => {
+            if (dir === '/dev/serial/by-id') {
+                return ['usb-busware.de_CUL868-if00', 'usb-Prolific_USB-Serial-if00-port0'];
+            }
+            throw new Error('ENOENT');
+        },
+        realpathSync: (link) => (link.includes('busware') ? '/dev/ttyACM0' : '/dev/ttyUSB0'),
+    };
+
+    test('a plugged-in stick becomes a candidate keyed by its stable name', async () => {
+        const found = await discover(
+            {serial: {contains: ['busware', 'CUL']}},
+            {timeout: 5, deps: {fs: fakeFs, createSocket: () => fakeSocket([])}},
+        );
+        assert.equal(found.length, 1);
+        assert.equal(found[0].address, '/dev/serial/by-id/usb-busware.de_CUL868-if00');
+        assert.equal(found[0].device, '/dev/ttyACM0');
+        assert.deepEqual(found[0].sources, ['serial']);
+    });
+
+    test('declared tcp ports do not drop it — a stick has none', async () => {
+        // the hint of an adapter that speaks to either a local stick or a network CUL
+        const found = await discover(
+            {serial: {contains: ['busware', 'CUL']}, ports: {cuno: 2323}},
+            {timeout: 5, deps: {fs: fakeFs, createSocket: () => fakeSocket([]), connect: fakeConnect([])}},
+        );
+        assert.equal(found.length, 1);
+        assert.equal(found[0].services, undefined);
+    });
+
+    test('describe shows the stable name and the device node it points at', () => {
+        assert.equal(
+            describeEntry({
+                address: '/dev/serial/by-id/usb-busware.de_CUL868-if00',
+                device: '/dev/ttyACM0',
+                sources: ['serial'],
+            }),
+            '/dev/serial/by-id/usb-busware.de_CUL868-if00  → /dev/ttyACM0  (serial)',
+        );
+    });
+
+    test('network devices sort before serial ports', async () => {
+        const socket = fakeSocket([
+            {message: Buffer.from('HTTP/1.1 200 OK\r\nSERVER: x\r\n\r\n'), address: '192.168.1.9'},
+        ]);
+        const found = await discover(
+            {serial: {contains: ['busware']}, ssdp: {}},
+            {timeout: 5, deps: {fs: fakeFs, createSocket: () => socket}},
+        );
+        assert.deepEqual(
+            found.map((entry) => entry.address),
+            ['192.168.1.9', '/dev/serial/by-id/usb-busware.de_CUL868-if00'],
+        );
     });
 });
 

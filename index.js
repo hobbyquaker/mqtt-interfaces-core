@@ -28,6 +28,8 @@ export {
     udpProbe,
     tcpProbe,
     arpTable,
+    listSerialPorts,
+    serialMatches,
     localSubnets,
     localBroadcasts,
     subnetHosts,
