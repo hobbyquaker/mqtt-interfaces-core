@@ -63,29 +63,34 @@ the convention itself is specified in
   with `payload_available: "2"`; pure builder from an adapter-supplied
   entity map (model: lgsb2mqtt `lib/hadiscovery.js`). Validation against
   HA's schema in CI — approach to decide here (B-8).
-- [~] **Device discovery** (B-2, 0.9.0): the scanning mechanics exactly once —
-  mDNS/DNS-SD and SSDP, UDP broadcast probes, subnet TCP sweeps, ARP/OUI
-  lookup, rate limiting, timeouts — driven by the adapter's declarative hint
-  and `probe(ip)`; provides `--discover`, `--discover-json` and
-  `--discover-timeout` (prefixed so they cannot collide with an adapter's own
-  `--json`/`--timeout`) plus `autoAddress()` for `--address auto`, which
-  refuses to guess on none and on several matches. `lib/discovery.js`, 45
-  unit tests against faked sockets; mDNS, the ARP parser and the subnet
-  maths verified against a real network, SSDP only against captures (no
-  UPnP responder answers on this LAN — checked with an independent client).
-  Two pilots wired up and verified against real hardware: hm2mqtt 3.3.0 (a
-  CCU3 by the eQ-3 broadcast probe) and lgsb2mqtt 2.1.0 (a soundbar by a
-  `_googlecast._tcp` browse narrowed to the temescal port). The hint shape
-  survived both without a change; what the real network added was
-  `--discover-address` (a device or a `10.0.1.0/24` range — nothing broadcast
-  or multicast crosses a router, and both pilots' devices live on their own
-  VLAN) and the mDNS group listener for reflected answers. A third pilot,
-  cul2mqtt 1.2.0, took discovery off the network entirely: a USB stick is found
-  by the name udev gave it (`serial` hint), which also settled that a candidate
-  is not always an ip address. wiim2mqtt 1.1.0 is the fourth and finally
-  exercises SSDP against real hardware — and found two bugs the fakes could not
-  (the `HOST` header of a multi-target M-SEARCH, and a broadcast target
-  silencing the whole scan). Every method is now proven on a real network.
+- [x] **Device discovery** (B-2, 0.9.0): the scanning mechanics exactly once —
+      SSDP, mDNS/DNS-SD, vendor UDP broadcast probes, subnet TCP sweeps, the
+      ARP/OUI lookup and USB serial ports from `/dev/serial/by-id` — driven by
+      the adapter's declarative hint plus an optional `probe(address)`, with the
+      rate limiting, the timeouts and the merging in one place.
+      `lib/discovery.js`, 150 unit tests against faked sockets, every method
+      verified against real hardware.
+      `--discover`, `--discover-json`, `--discover-timeout`,
+      `--discover-address` (a device, another subnet's broadcast, or a
+      `10.0.1.0/24` range to sweep — nothing broadcast or multicast crosses a
+      router) and `--discover-ip`; `autoAddress()` backs `--address auto` and
+      refuses to guess when none or several devices answer.
+      Every network candidate carries the names DNS knows it by, each verified
+      by a round trip: `fqdn` and `hostname` beside the `address`, which is
+      never replaced, so a UI can offer all three and the user picks (she I13);
+      `auto` takes the fqdn, which outlives a dhcp lease. `x-discover` in
+      `--config-schema` marks the property the scan fills with the kind of scan
+      the hint asks for (`network` / `serial`), and its presence is what makes
+      an adapter discovery-capable to a management UI.
+      Pilots, each verified against the real device: hm2mqtt 3.3.0 (the eQ-3
+      broadcast probe plus the interface ports), lgsb2mqtt 2.1.0
+      (`_googlecast._tcp` narrowed to the temescal port), cul2mqtt 1.2.0 (a
+      busware stick by the name udev gave it) and wiim2mqtt 1.1.0 (SSDP
+      MediaRenderer plus the UPnP description). The hint shape survived all four
+      unchanged; what the real network added was `--discover-address`, the mDNS
+      group listener that hears answers relayed by a reflector, and two bugs no
+      fake socket could show — the `HOST` header of a multi-target M-SEARCH, and
+      a single broadcast target silencing an entire scan.
 - [x] **systemd `--install`/`--uninstall`**: template unit
       `<adapter>@<name>`, `/etc/<adapter>/<name>.env`, system user,
       `SyslogIdentifier=<adapter>@%i`, `EnvironmentFile=-` for the shared
@@ -116,27 +121,30 @@ the convention itself is specified in
 1. ~~Extract config loader, MQTT wrapper, payload helpers, logger, discovery
    scaffold and installer from lgtv2mqtt 2.0~~ — done 2026-08-22 (0.1.0, 49 unit
    tests), see C-1.
-2. **lgtv2mqtt 3.0** on top of it as the reference adapter (same topics as 2.0 +
-   maintenance topics); this is where the API gets its final shape. Publish
-   core 0.1.0 to npm once 3.0 runs against the real TV.
-3. **lgsb2mqtt 2.0** (ESM, drops yalm, gains info/maintenance for free), then the
-   rest of the fleet by usage/value (Phase 3).
-4. Spec 2.x in the umbrella repo is written _from_ what the core does (the
-   lib and the two pilots are the living draft).
-5. HA discovery publisher + CI validation (B-8).
-6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`),
-   ~~pilots hm2mqtt 3.3.0~~ (the eQ-3 UDP probe of
-   [hm-discover](https://github.com/hobbyquaker/hm-discover), the worked example
-   in README §8), ~~lgsb2mqtt 2.1.0~~ (`_googlecast._tcp` + port 9741),
-   ~~cul2mqtt 1.2.0~~ (a USB stick by its by-id name) and ~~wiim2mqtt 1.1.0~~
-   (SSDP MediaRenderer + the UPnP description). Candidates for the rest of the
-   fleet: lgtv2mqtt (SSDP webOS ST), fritz2mqtt (SSDP IGD, or TR-064 on 49000 —
-   works through a NAT cascade, where SSDP does not), unifi2mqtt (the Ubiquiti
-   UDP probe on 10001, which UniFi gear answers with model and firmware) and
-   govee2mqtt (its LAN scan, which needs the answer socket bound to 4002).
-   ecoflow2mqtt has nothing on the network to find — the inverter only talks to
-   EcoFlow's cloud, so "discovery" there means listing the account's devices.
-7. `--install` module, shared tooling package.
+2. ~~**lgtv2mqtt 3.0** as the reference adapter~~ — done (3.0.x); the API got its
+   final shape there, and core 0.1.0 went to npm once it ran against the real TV.
+3. ~~**lgsb2mqtt 2.0**~~ — done (2.1.x), and the rest of the fleet followed
+   (Phase 3): eleven adapters on the core.
+4. **Open**: spec 2.x in the umbrella repo, written _from_ what the core does —
+   the lib and the pilots are the living draft.
+5. HA discovery publisher — the builder and its helpers are done; **open** is the
+   CI validation of the payloads against HA's schema (B-8), JSON Schema or an HA
+   container, undecided.
+6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`) with
+   four pilots (hm2mqtt, lgsb2mqtt, cul2mqtt, wiim2mqtt; the eQ-3 probe of
+   [hm-discover](https://github.com/hobbyquaker/hm-discover) is the worked
+   example in README §8). **Open** for the rest of the fleet: lgtv2mqtt (SSDP
+   webOS ST), fritz2mqtt (TR-064 on 49000 — reachable through a NAT cascade,
+   where SSDP is not), unifi2mqtt (the Ubiquiti UDP probe on 10001, which UniFi
+   gear answers with model and firmware) and govee2mqtt (its LAN scan, which
+   needs the answer socket bound to 4002 in the core first). ecoflow2mqtt has
+   nothing on the network to find — the inverter only talks to EcoFlow's cloud,
+   so discovery there means listing the account's devices.
+7. ~~`--install` module~~ — done (`lib/install.js`). **Open**: the shared tooling
+   package. eslint/prettier config, the CI and release workflows and the
+   release-notes generator are still copied per repo — the generator fix of
+   2026-08-28 had to be applied to fourteen copies, which is the real pressure
+   D-8 was waiting for.
 
 ## 0.3.0 — needed by alexa-remote-mqtt 2.0 (done)
 
