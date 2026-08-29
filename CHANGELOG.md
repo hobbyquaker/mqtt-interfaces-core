@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0
+
+### Added
+
+- **`x-discover-needs`** in `--config-schema`: the option names a scan consumes, beside the
+  `x-discover` marker on the same property (`["email", "password"]` for a cloud hint). 0.11.0 told
+  the _adapter_ which options `--discover` must keep demanding but told a management UI nothing, so
+  she could see that ecoflow2mqtt was discovery-capable and still had no way to know the scan is an
+  account login that fails without credentials. A UI reads this to collect those fields before
+  offering the scan and to pass them into the run. Absent when the scan needs nothing, which is
+  every network and serial hint.
+
 ## 0.11.3
 
 ### Fixed

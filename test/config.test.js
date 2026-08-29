@@ -300,6 +300,12 @@ describe('discovery options', () => {
             discovery: {cloud: {list: () => []}, needs: ['email']},
         });
         assert.equal(cloud.properties.address['x-discover'], 'cloud');
+        assert.deepEqual(cloud.properties.address['x-discover-needs'], ['email']);
+        assert.equal(
+            network.properties.address['x-discover-needs'],
+            undefined,
+            'a network scan consumes nothing, so the key stays absent',
+        );
     });
 
     test('no hint, no marker — an adapter without discovery is not discovery-capable', () => {

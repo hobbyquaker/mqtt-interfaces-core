@@ -483,6 +483,14 @@ if (config.tv === 'auto') {
 `--discover` is exempt from mandatory options — the address it is about to go looking for must
 not be required to run it.
 
+**A scan that needs credentials.** `hint.needs` names the options the scan itself consumes, and
+they show up as `x-discover-needs` on the marked property in `--config-schema`. `--discover` drops
+mandatory options — the address it is going looking for must not be required to look for it — but a
+cloud hint cannot list an account without its login, so those stay demanded. A management UI reads
+`x-discover-needs` to know which fields to collect _before_ offering the scan and to pass into the
+`--discover` run; they are options of the instance being configured either way, so nothing extra is
+asked of the user.
+
 **Bridges take all of them.** `autoAddress` refuses to guess when the network answers with
 several, which is right for an adapter that drives one device and wrong for one instance that
 bridges a whole LAN. There `autoAddresses` (plural) is the counterpart: it returns every hit as
@@ -507,6 +515,8 @@ The hint:
 | `ports`       | `{label: port}` probed on every candidate → `services: {label: true\|false}`; a candidate with none open is dropped (`requirePort: false` keeps it) |
 | `requirePort` | `false` keeps a candidate whose declared ports are all closed — the announcement was proof enough                                                   |
 | `oui`         | MAC prefixes — matching entries of the ARP cache become candidates                                                                                  |
+| `cloud`       | `{list({timeout})}` → `[{id, name, model, …}]` — the vendor's device list, for hardware not on the LAN at all; failures propagate                   |
+| `needs`       | option names the scan consumes (`['email', 'password']`) — kept mandatory under `--discover`, published as `x-discover-needs`                       |
 | `serial`      | `{contains: ['busware', 'CUL'], match, dir}` — USB serial adapters from `/dev/serial/by-id`                                                         |
 | `probe`       | `async (address, entry) => fields \| null` — the last word; `null` drops the candidate                                                              |
 
