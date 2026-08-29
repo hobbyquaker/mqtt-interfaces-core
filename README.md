@@ -133,7 +133,7 @@ xyz2mqtt/
 {
   "name": "xyz2mqtt",
   "version": "1.0.0",
-  "description": "Interface between XYZ and MQTT, with Home Assistant discovery",
+  "description": "Interface between XYZ and MQTT",
   "type": "module",
   "main": "index.js",
   "bin": {"xyz2mqtt": "index.js"},
@@ -167,8 +167,10 @@ xyz2mqtt/
   directory `/etc/<adapter>/`, the state directory `/var/lib/<adapter>/`, the system user and the
   default env prefix (`XYZ2MQTT_`, non-alphanumerics → `_`). Lower case, no scope.
 - `mqttInterfaces` is optional metadata for catalogs (see [Management UIs](#management-uis-she)):
-  `spec` — implemented spec version; `envPrefix`; `needs` — host prerequisites a UI should point
-  out (`serial`, `bluetooth`, `usb`, `network-host`); `serviceExtra` — the extra `[Service]` lines
+  `spec` — implemented spec version; `envPrefix`; `needs` — what the adapter talks to, shown as
+  badges by catalogs: `network` (a device or service on the LAN), `cloud` (a vendor service on the
+  internet), `serial` (a serial/USB device — add the dialout group via `serviceExtra`), `bluetooth`,
+  `usb`; several may apply (`["network", "cloud"]`); `serviceExtra` — the extra `[Service]` lines
   the installer adds.
 
 ### 3. config.js — options
