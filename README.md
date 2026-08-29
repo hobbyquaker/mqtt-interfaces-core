@@ -214,7 +214,8 @@ What you get and must not redo yourself:
 - The **shared options** every adapter has: `--mqtt-url/-u/--url`, `--mqtt-username`,
   `--mqtt-password`, `--mqtt-client-id-prefix`, `--mqtt-tls-ca`, `--name/-n`, `--json-payloads`
   (default on), `--ha-discovery` (default on), `--ha-prefix`, `--maintenance` (default on),
-  `--verbosity/-v`, `--install`, `--uninstall`, `--config-schema`, `--help`, `--version`. Override a
+  `--stats-interval` (60 s, 0 = off), `--verbosity/-v`, `--install`, `--uninstall`, `--config-schema`,
+  `--help`, `--version`. Override a
   shared default via `defaults` (`{name: 'xyz'}` at least).
 - Every option as **environment variable** `<PREFIX>_<OPTION>` (`XYZ2MQTT_POLL_INTERVAL`), typed;
   the unprefixed `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TLS_CA` as fallback (that is
@@ -379,6 +380,10 @@ daemon, an unreachable device is normal operation, not a reason to exit.
   it is not a status topic.
 - **`<name>/maintenance/set/loglevel`** (`error|warn|info|debug`) and **`…/restart`** — provided by
   the core; `--no-maintenance` turns them off for untrusted brokers.
+- **`<name>/maintenance/stats`** (retained, every `--stats-interval` seconds, default 60, `0` = off):
+  `rss`, `heapUsed`, `heapTotal` (bytes), `cpu` (percent of one core over the interval), `eventLoopLag`
+  (worst ms in the interval), `uptime` (s), `ts` — process stats for dashboards such as she's
+  Instances tab. Provided by the core, nothing to do in the adapter.
 - **Raw/protocol topics** (`<name>/raw`, `<name>/set/raw`) are opt-in (`--publish-raw`,
   `--raw-set`), never on by default: a raw transmitter is a security surface.
 - Topic names are API: do not rename items outside a major release; document the migration table
@@ -505,15 +510,16 @@ npm version.
 
 ## Conventions implemented
 
-| topic                             | retained | notes                                                                             |
-| --------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `<name>/connected`                | yes      | `0` LWT/shutdown, `1` mqtt only, `2` mqtt + device                                |
-| `<name>/status/<item>`            | yes      | `{val, ts, lc}` JSON (+ adapter extras), or plain value with `--no-json-payloads` |
-| `<name>/set/<item>[/...]`         | —        | plain value or `{"val": ...}`; handled by the adapter's `onSet`                   |
-| `<name>/info`                     | yes      | `name, version, spec, node, host, pid, started, maintenance, ...`                 |
-| `<name>/maintenance/set/loglevel` | —        | `error`/`warn`/`info`/`debug`; `--no-maintenance` disables                        |
-| `<name>/maintenance/set/restart`  | —        | graceful shutdown + exit 0; the supervisor restarts the process                   |
-| `<ha-prefix>/device/<id>/config`  | yes      | HA device discovery, on by default; `--no-ha-discovery` clears it                 |
+| topic                             | retained | notes                                                                                          |
+| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `<name>/connected`                | yes      | `0` LWT/shutdown, `1` mqtt only, `2` mqtt + device                                             |
+| `<name>/status/<item>`            | yes      | `{val, ts, lc}` JSON (+ adapter extras), or plain value with `--no-json-payloads`              |
+| `<name>/set/<item>[/...]`         | —        | plain value or `{"val": ...}`; handled by the adapter's `onSet`                                |
+| `<name>/info`                     | yes      | `name, version, spec, node, host, pid, started, maintenance, ...`                              |
+| `<name>/maintenance/set/loglevel` | —        | `error`/`warn`/`info`/`debug`; `--no-maintenance` disables                                     |
+| `<name>/maintenance/set/restart`  | —        | graceful shutdown + exit 0; the supervisor restarts the process                                |
+| `<name>/maintenance/stats`        | yes      | `rss, heapUsed, heapTotal, cpu, eventLoopLag, uptime, ts` every `--stats-interval` s (0 = off) |
+| `<ha-prefix>/device/<id>/config`  | yes      | HA device discovery, on by default; `--no-ha-discovery` clears it                              |
 
 `discovery()` returns one device block, or an array of them for a bridge that sees several physical
 devices (one `config` topic per device, `device.via_device` pointing at the bridge; devices missing
@@ -527,8 +533,8 @@ it is not re-published after an mqtt reconnect, but the value stays readable via
 
 Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
 `--mqtt-client-id-prefix`, `--mqtt-tls-ca`, `--name/-n`, `--json-payloads`, `--ha-discovery`,
-`--ha-prefix`, `--maintenance`, `--verbosity/-v`, `--install`, `--uninstall`, `--config-schema`.
-All of them also as `<ADAPTER>_<OPTION>` environment variables; `MQTT_URL`, `MQTT_USERNAME`,
+`--ha-prefix`, `--maintenance`, `--stats-interval`, `--verbosity/-v`, `--install`, `--uninstall`,
+`--config-schema`. All of them also as `<ADAPTER>_<OPTION>` environment variables; `MQTT_URL`, `MQTT_USERNAME`,
 `MQTT_PASSWORD`, `MQTT_TLS_CA` unprefixed as fallback (the client id prefix is per instance).
 
 ## API

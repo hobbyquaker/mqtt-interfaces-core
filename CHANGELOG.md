@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+### Added
+
+- `<name>/maintenance/stats` (retained): `rss`, `heapUsed`, `heapTotal`, `cpu` (percent of one core
+  over the interval), `eventLoopLag` (worst ms), `uptime`, `ts` — published every `--stats-interval`
+  seconds (default 60, `0` disables). she shows memory and CPU per instance from it; hosts with the
+  helper fall back to systemd's accounting for adapters on older cores.
+
 ## 0.7.0
 
 Needed by hm2mqtt 3.0 (a drop-in replacement for a Node-RED flow: meta-data block in every

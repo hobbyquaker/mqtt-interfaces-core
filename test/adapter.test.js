@@ -235,6 +235,32 @@ describe('lifecycle', () => {
     });
 });
 
+describe('stats (0.8.0)', () => {
+    test('statsPayload carries memory, cpu share and uptime; publishStats retains it under maintenance/stats', () => {
+        const {adapter, client} = setup({}, {statsInterval: 0});
+        client.emit('connect');
+        const s = adapter.statsPayload();
+        assert.ok(s.rss > 0 && s.heapUsed > 0 && s.heapTotal >= s.heapUsed);
+        assert.ok(typeof s.cpu === 'number' && s.cpu >= 0);
+        assert.equal(typeof s.eventLoopLag, 'number');
+        assert.ok(s.uptime >= 0 && s.ts > 0);
+        adapter.publishStats();
+        const m = client.last('foo/maintenance/stats');
+        assert.ok(m, 'published');
+        assert.equal(m.options.retain, true);
+        assert.deepEqual(Object.keys(JSON.parse(m.payload)).sort(), [
+            'cpu',
+            'eventLoopLag',
+            'heapTotal',
+            'heapUsed',
+            'rss',
+            'ts',
+            'uptime',
+        ]);
+        adapter.shutdown('test');
+    });
+});
+
 describe('incoming', () => {
     test('set topics are parsed and dispatched, failures logged at warn', () => {
         const {client, sets, lines} = setup();
