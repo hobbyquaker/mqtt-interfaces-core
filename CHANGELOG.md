@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.0
+
+### Added
+
+- **`listen`** on `createAdapter()`: topics anywhere on the broker, not under `<name>/`. Until now
+  every subscription was prefixed with the instance name and anything else was refused as an
+  unexpected topic, which left out a whole category — a **sink**, whose subject is other adapters'
+  traffic rather than a device of its own (influx4mqtt, mqtt2elasticsearch). Patterns are
+  subscribed as given and the handler gets `(topic, value, raw, packet)` rather than the captured
+  levels a `subscriptions` handler gets: what a sink works on is the whole topic, and
+  `packet.retain` is what separates live traffic from the broker replaying its backlog.
+- The adapter's own `set` and `maintenance` topics are matched before any `listen` pattern, so a
+  wide pattern such as `+/+/#` cannot swallow the commands the instance is meant to act on. Its own
+  `status` topics are ordinary traffic and do reach a sink, which is what a recorder wants.
+
 ## 0.12.0
 
 ### Added

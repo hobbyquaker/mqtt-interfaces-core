@@ -336,6 +336,7 @@ adapter.start();
 | `discoveryTriggers`               | status items whose change re-publishes discovery (coalesced by `discoveryDelay`, default 1 s)                                                                                                                       |
 | `onSet(parts, value, topic, raw)` | handles `<name>/set/<parts…>`; `value` is the parsed payload (plain or `{val}`), return a promise; throw/reject → `warn` log                                                                                        |
 | `subscriptions`                   | `{pattern: handler}` — an adapter's own topics under `<name>/` besides `set/#` (`{'paramset/#': …, 'rpc/+/+/+': …}`); MQTT wildcards, handler called like `onSet` with the levels the wildcards captured as `parts` |
+| `listen`                          | `{pattern: handler}` — topics **anywhere on the broker** for a sink (`{'+/status/#': …, '$SYS/#': …}`); subscribed as given, handler gets `(topic, value, raw, packet)`                                             |
 | `onMqttConnect({reconnect})`      | after every (re)connect once subscriptions are done and status is re-published                                                                                                                                      |
 | `onShutdown()`                    | called on SIGINT/SIGTERM/`maintenance/set/restart` before `connected 0` is published; may return a promise (2 s budget)                                                                                             |
 
@@ -373,6 +374,14 @@ daemon, an unreachable device is normal operation, not a reason to exit.
 - **Own topics** besides `set/#` (a command tree that is not a `set`, an RPC pass-through):
   `createAdapter({subscriptions: {'paramset/#': handler}})` subscribes `<name>/paramset/#` and
   dispatches like `onSet`. Keep them rare; `set/<item>` is the convention.
+- **Sinks** — an adapter whose subject is other adapters' traffic rather than a device of its own
+  (influx4mqtt, mqtt2elasticsearch): `createAdapter({listen: {'+/status/#': handler}})` subscribes
+  the pattern **as given**, anywhere on the broker, not under `<name>/`. The handler gets
+  `(topic, value, raw, packet)` rather than the captured levels a `subscriptions` handler gets —
+  what a sink works on is the whole topic, and `packet.retain` is what separates live traffic from
+  the broker replaying its backlog on subscribe. The adapter's own `set` and `maintenance` are
+  matched first, so a wide pattern cannot swallow its own commands; its `status` topics are
+  ordinary traffic and do reach the sink.
 - **`<name>/set/<item>[/...]`**: commands. Accept plain payloads (`50`, `true`, `on`, text) and
   `{"val": …}`; use `toBoolean`, `clampInt`, `toVolume` for tolerant parsing. A `set` on an item
   should result in a `status` update from the device's feedback, not from echoing the command.

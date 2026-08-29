@@ -31,8 +31,8 @@ class FakeMqtt extends EventEmitter {
         }
     }
     // test helper: deliver a message
-    deliver(topic, payload) {
-        this.emit('message', topic, Buffer.from(String(payload)));
+    deliver(topic, payload, packet = {}) {
+        this.emit('message', topic, Buffer.from(String(payload)), packet);
     }
     last(topic) {
         const hits = this.published.filter((p) => p.topic === topic);
@@ -383,6 +383,57 @@ describe('subscriptions (0.7.0)', () => {
         assert.equal(lines.filter((l) => l.includes('ignoring unexpected topic')).length, 1);
         await new Promise((resolve) => setImmediate(resolve));
         assert.ok(lines.some((l) => l.includes('<4>dev paramset x/y failed: kaboom')));
+    });
+
+    test('listen: a sink gets topics anywhere on the broker, with the packet', async () => {
+        const seen = [];
+        const {client, lines} = setup({
+            listen: {
+                '+/status/#': (topic, value, raw, packet) => {
+                    seen.push({topic, value, raw, retain: Boolean(packet.retain)});
+                    if (raw === 'boom') {
+                        throw new Error('kaboom');
+                    }
+                },
+                '$SYS/#': (topic) => seen.push({sys: topic}),
+            },
+        });
+        client.emit('connect');
+        assert.deepEqual(
+            client.subscribed,
+            ['foo/set/#', 'foo/maintenance/set/+', '+/status/#', '$SYS/#'],
+            "the sink patterns are absolute, the adapter's own are prefixed",
+        );
+
+        client.deliver('hm/status/Licht', '{"val": 21.5}');
+        client.deliver('$SYS/broker/uptime', '1000');
+        client.deliver('zigbee2mqtt/x', '1'); // matches nothing
+        assert.deepEqual(seen[0], {topic: 'hm/status/Licht', value: 21.5, raw: '{"val": 21.5}', retain: false});
+        assert.deepEqual(seen[1], {sys: '$SYS/broker/uptime'});
+        assert.equal(seen.length, 2);
+        assert.equal(lines.filter((l) => l.includes('ignoring unexpected topic')).length, 1);
+
+        // retain is what tells a sink live traffic from the broker replaying its backlog
+        client.deliver('hm/status/Licht', '1', {retain: true});
+        assert.equal(seen[2].retain, true);
+
+        // a throwing handler is logged, not fatal
+        client.deliver('hm/status/Licht', 'boom');
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.ok(lines.some((l) => l.includes('hm/status/Licht failed: kaboom')));
+    });
+
+    test("listen: the adapter's own set and maintenance win over a matching sink pattern", () => {
+        const seen = [];
+        const {client, sets} = setup({listen: {'+/+/#': (topic) => seen.push(topic)}});
+        client.emit('connect');
+        client.deliver('foo/set/volume', '3');
+        client.deliver('foo/maintenance/set/loglevel', 'debug');
+        assert.deepEqual(sets[0].parts, ['volume'], 'set was acted on, not forwarded');
+        assert.deepEqual(seen, [], 'neither reached the sink');
+        // but the adapter's own status topics do reach it — they are ordinary traffic
+        client.deliver('foo/status/volume', '3');
+        assert.deepEqual(seen, ['foo/status/volume']);
     });
 
     test('extra payload fields and device-side timestamps survive a reconnect', () => {
