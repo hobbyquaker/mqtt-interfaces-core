@@ -1326,6 +1326,12 @@ describe('cloud discovery (the vendor knows, the network does not)', () => {
         assert.deepEqual(await discover({cloud: true}, {timeout: 5, names: false}), []);
     });
 
+    test('a device the vendor reports as offline says so, one it says nothing about does not', () => {
+        assert.match(describeEntry({address: 'BK01ZXXXXXXXXXXX', name: 'Garage', online: false}), /offline/);
+        assert.doesNotMatch(describeEntry({address: 'BK01ZXXXXXXXXXXX', name: 'Balcony', online: true}), /offline/);
+        assert.doesNotMatch(describeEntry({address: '192.168.1.20', name: 'a tv'}), /offline/);
+    });
+
     test('one device: --sn auto takes it', async () => {
         assert.equal(
             await autoAddress({cloud: {list: async () => [BOUND[0]]}}, {timeout: 5, names: false}),

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.2
+
+### Added
+
+- `describe()` marks a candidate `offline` when the source reported it as such (`online: false`),
+  so the plain `--discover` listing says which devices are actually reachable and not only the
+  JSON. A candidate nothing said anything about is not labelled — absence is not "offline".
+
 ## 0.11.1
 
 ### Fixed
