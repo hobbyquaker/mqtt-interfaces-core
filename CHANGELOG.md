@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.1
+
+### Fixed
+
+- The `--discover*` options an adapter offers now follow its hint. A cloud-only hint no longer
+  advertises `--discover-address` (a subnet to sweep) or `--discover-ip` (prefer the address over
+  the dns name) — meaningless where nothing is scanned — and `--discover` describes itself as
+  listing the account rather than scanning the network. Adapters with a network or serial hint,
+  and those passing `discovery: true`, keep exactly the options they had.
+
 ## 0.11.0
 
 Discovery for adapters whose hardware is not on the network at all, prompted by ecoflow2mqtt.

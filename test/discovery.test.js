@@ -19,6 +19,7 @@ import {
     describe as describeEntry,
     discover,
     discoveryKinds,
+    discoveryOptions,
     discoverOne,
     encodeName,
     encodeQuery,
@@ -1300,6 +1301,23 @@ describe('cloud discovery (the vendor knows, the network does not)', () => {
             ),
             /^DiscoveryError: the account owns no devices$/,
         );
+    });
+
+    test('a cloud-only hint drops the network-only --discover options', () => {
+        const cloud = discoveryOptions({cloud: true, needs: ['email']});
+        assert.equal(cloud['discover-address'], undefined, 'no subnet to sweep');
+        assert.equal(cloud['discover-ip'], undefined, 'no dns name to prefer over an address');
+        assert.match(cloud.discover.describe, /account/);
+        assert.equal(Object.hasOwn(cloud, 'discover-json'), true);
+
+        const network = discoveryOptions({ssdp: {}});
+        assert.equal(typeof network['discover-address'], 'object');
+        assert.match(network.discover.describe, /scan the network/);
+
+        // `discovery: true` declares no kind and must keep the full set it always had
+        assert.equal(typeof discoveryOptions(true)['discover-address'], 'object');
+        // a hint that is both keeps them too — the network half needs them
+        assert.equal(typeof discoveryOptions({cloud: true, ssdp: {}})['discover-address'], 'object');
     });
 
     test('cloud: true declares the kind without a callable and scans nothing', async () => {

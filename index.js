@@ -26,6 +26,7 @@ export {
     describe as describeDevice,
     DiscoveryError,
     DISCOVERY_OPTIONS,
+    discoveryOptions,
     ssdpSearch,
     mdnsQuery,
     udpProbe,
