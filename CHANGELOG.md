@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.11.0
+
+Discovery for adapters whose hardware is not on the network at all, prompted by ecoflow2mqtt.
+
+### Added
+
+- **`cloud` hint** — `{list({timeout})}` returning `[{id, name, model, …}]`, for a device that can
+  only be found by asking its vendor. An EcoFlow inverter opens an outbound connection to
+  EcoFlow's broker and speaks to nothing else, so every scanning method finds precisely nothing
+  and the thing to configure is a serial number from the app; listing the account's devices is
+  the only discovery there is. Entries become candidates keyed by `id`, with source `cloud`.
+- `discoveryKinds()` returns `'cloud'`, so `x-discover` in `--config-schema` carries it and a
+  management UI can offer the right affordance (she I13). A UI that does not know the value
+  should still treat the property as discovery-capable.
+- **`hint.needs`** and `discoveryNeeds(hint)` — option names `--discover` must keep demanding.
+  `--discover` drops mandatory options, because the address it is about to look for must not be
+  required to look for it; a cloud hint inverts that for its credentials, since without them
+  there is no account to list and the missing option would surface as an api error much further
+  down. The option the scan _fills_ is never among them.
+
+### Changed
+
+- A cloud `list()` failure **propagates** instead of being swallowed the way a failed SSDP search
+  is. A network method that finds nothing is a result; a cloud method that fails is a wrong
+  password or a moved endpoint, and reporting that as an empty network is what sent the last such
+  bug hunting in the wrong place.
+- `runDiscovery()` catches that failure, logs it and exits non-zero, rather than letting an
+  unhandled rejection print a stack trace. Network hints are unaffected — they still cannot fail.
+- `cloud: true` declares the kind without a callable, for the common case where the hint cannot
+  be built until the config is parsed (`parseConfig` needs the shape; only `discover()` needs the
+  function). A cloud spec without a `list` is skipped rather than crashing the scan.
+
 ## 0.10.0
 
 Discovery for bridges, prompted by govee2mqtt: its LAN scan could not be expressed with what

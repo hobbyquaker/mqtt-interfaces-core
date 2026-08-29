@@ -11,12 +11,14 @@ import {EventEmitter} from 'node:events';
 
 import {
     DNS_TYPE,
+    DiscoveryError,
     arpTable,
     assembleServices,
     autoAddress,
     autoAddresses,
     describe as describeEntry,
     discover,
+    discoveryKinds,
     discoverOne,
     encodeName,
     encodeQuery,
@@ -102,6 +104,9 @@ function fakeConnect(open = []) {
 }
 
 const FAST = {timeout: 5, tries: 1};
+
+/** A logger that swallows everything; tests that care replace the level they assert on. */
+const NO_LOG_LEVELS = {debug() {}, info() {}, warn() {}, error() {}};
 
 /** A resolver that answers nothing — the default for tests that are not about names. */
 const NO_DNS = {
@@ -1231,6 +1236,114 @@ describe('autoAddress', () => {
             socket.sent.some((entry) => entry.address === '172.16.24.255'),
             'probed the named address',
         );
+    });
+});
+
+describe('cloud discovery (the vendor knows, the network does not)', () => {
+    const BOUND = [
+        {id: 'BK01ZXXXXXXXXXXX', name: 'Balcony', model: 'STREAM Micro', online: true},
+        {id: 'BK01ZYYYYYYYYYYY', name: 'Garage', model: 'STREAM Micro', online: false},
+    ];
+
+    test('the account’s devices become candidates, keyed by id', async () => {
+        const found = await discover({cloud: {list: async () => BOUND}}, {timeout: 5, names: false});
+        assert.deepEqual(
+            found.map((entry) => entry.address),
+            ['BK01ZXXXXXXXXXXX', 'BK01ZYYYYYYYYYYY'],
+        );
+        assert.equal(found[0].name, 'Balcony');
+        assert.equal(found[0].model, 'STREAM Micro');
+        assert.deepEqual(found[0].sources, ['cloud']);
+    });
+
+    test('a serial number is not an address, so no reverse lookup is attempted', async () => {
+        const dns = {
+            reverse: async () => {
+                throw new Error('dns must not be asked about a serial number');
+            },
+            lookup: async () => {
+                throw new Error('dns must not be asked about a serial number');
+            },
+        };
+        const found = await discover({cloud: {list: async () => BOUND}}, {timeout: 5, deps: {dns}});
+        assert.equal(found.length, 2);
+        assert.equal(found[0].fqdn, undefined);
+    });
+
+    test('a failure propagates — a wrong password is not an empty network', async () => {
+        await assert.rejects(
+            discover(
+                {
+                    cloud: {
+                        list: async () => {
+                            throw new Error('login failed: invalid password');
+                        },
+                    },
+                },
+                {timeout: 5, names: false},
+            ),
+            /the account could not be listed — login failed: invalid password/,
+        );
+    });
+
+    test('a DiscoveryError from the adapter is passed through as it is', async () => {
+        await assert.rejects(
+            discover(
+                {
+                    cloud: {
+                        list: async () => {
+                            throw new DiscoveryError('the account owns no devices');
+                        },
+                    },
+                },
+                {timeout: 5, names: false},
+            ),
+            /^DiscoveryError: the account owns no devices$/,
+        );
+    });
+
+    test('cloud: true declares the kind without a callable and scans nothing', async () => {
+        // config.js cannot build the real hint — the credentials are not parsed yet
+        assert.deepEqual(discoveryKinds({cloud: true, needs: ['email']}), ['cloud']);
+        assert.deepEqual(await discover({cloud: true}, {timeout: 5, names: false}), []);
+    });
+
+    test('one device: --sn auto takes it', async () => {
+        assert.equal(
+            await autoAddress({cloud: {list: async () => [BOUND[0]]}}, {timeout: 5, names: false}),
+            'BK01ZXXXXXXXXXXX',
+        );
+    });
+
+    test('two devices: autoAddress refuses rather than picking one', async () => {
+        await assert.rejects(
+            autoAddress({cloud: {list: async () => BOUND}}, {timeout: 5, names: false}),
+            /2 devices found .* give the address explicitly/,
+        );
+    });
+
+    test('runDiscovery prints the failure and exits non-zero instead of throwing', async () => {
+        const lines = [];
+        const errors = [];
+        let code = null;
+        await runDiscovery({
+            hint: {
+                cloud: {
+                    list: async () => {
+                        throw new Error('login failed: invalid password');
+                    },
+                },
+            },
+            config: {discoverTimeout: 0.005},
+            log: {...NO_LOG_LEVELS, error: (...args) => errors.push(args.join(' '))},
+            print: (line) => lines.push(line),
+            exit: (value) => {
+                code = value;
+            },
+        });
+        assert.equal(code, 1);
+        assert.deepEqual(lines, [], 'nothing printed as if it were a result');
+        assert.match(errors.join(' '), /invalid password/);
     });
 });
 

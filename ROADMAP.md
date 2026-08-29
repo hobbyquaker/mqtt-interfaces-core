@@ -140,9 +140,12 @@ the convention itself is specified in
    **Open** for the rest of the fleet: lgtv2mqtt (SSDP webOS ST), fritz2mqtt
    (TR-064 on 49000 — reachable through a NAT cascade, where SSDP is not) and
    unifi2mqtt (the Ubiquiti UDP probe on 10001, which UniFi gear answers with
-   model and firmware). ecoflow2mqtt has nothing on the network to find — the
-   inverter only talks to EcoFlow's cloud, so discovery there means listing the
-   account's devices.
+   model and firmware). ecoflow2mqtt followed in 0.11.0 and was the interesting
+   one: it has nothing on the network to find, because the inverter only talks
+   to EcoFlow's cloud. Discovery there is the `cloud` hint — list the account's
+   devices — which needed two ideas the network methods had not: credentials the
+   scan consumes (`needs`, kept mandatory under `--discover`), and failures that
+   propagate, since a wrong password must not be reported as an empty network.
 7. ~~`--install` module~~ — done (`lib/install.js`). **Open**: the shared tooling
    package. eslint/prettier config, the CI and release workflows and the
    release-notes generator are still copied per repo — the generator fix of

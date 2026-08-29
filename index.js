@@ -22,6 +22,7 @@ export {
     autoAddresses,
     runDiscovery,
     discoveryKinds,
+    discoveryNeeds,
     describe as describeDevice,
     DiscoveryError,
     DISCOVERY_OPTIONS,

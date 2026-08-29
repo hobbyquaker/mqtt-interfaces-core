@@ -2,6 +2,7 @@ import {test, describe} from 'node:test';
 import assert from 'node:assert/strict';
 
 import {parseConfig, configSchema, applySharedEnv, envVarName} from '../lib/config.js';
+import {discoveryNeeds} from '../lib/discovery.js';
 
 const pkg = {name: 'foo2mqtt', version: '1.2.3', homepage: 'https://github.com/x/foo2mqtt', description: 'Foo to MQTT'};
 const options = {
@@ -230,6 +231,37 @@ describe('discovery options', () => {
         assert.equal(c.discover, true);
     });
 
+    test('but hint.needs keeps demanding what the scan itself consumes', () => {
+        /*
+         * A cloud hint cannot list an account without its credentials, so --email stays mandatory
+         * under --discover while `address` — the option the scan fills — stays exempt. The
+         * refusal itself is yargs': it prints the usage and exits the process, which a test
+         * cannot intercept through parseConfig's `exit`, so what is asserted here is that the
+         * option keeps demanding and that the exemption still applies to everything else.
+         */
+        const withSecret = {...options, email: {type: 'string', describe: 'account', demandOption: true}};
+        const c = parseConfig({
+            pkg,
+            options: withSecret,
+            defaults: {name: 'foo'},
+            discovery: {cloud: {list: () => []}, needs: ['email']},
+            argv: ['--discover', '--email', 'me@example.com'],
+            env: {},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.email, 'me@example.com');
+        assert.equal(c.address, undefined, 'the option the scan fills is still exempt');
+    });
+
+    test('discoveryNeeds: only a hint that names them, and only strings', () => {
+        assert.deepEqual(discoveryNeeds({cloud: {}, needs: ['email', 'password']}), ['email', 'password']);
+        assert.deepEqual(discoveryNeeds({ssdp: {}}), [], 'a network hint needs nothing to scan');
+        assert.deepEqual(discoveryNeeds(true), []);
+        assert.deepEqual(discoveryNeeds(undefined), []);
+        assert.deepEqual(discoveryNeeds({needs: ['ok', '', null, 7]}), ['ok']);
+    });
+
     test('x-discover marks the property the scan fills, with the kind of scan', () => {
         const withHint = {...options, address: {...options.address, discover: true}};
         const network = configSchema({
@@ -259,6 +291,15 @@ describe('discovery options', () => {
             discovery: {serial: {}, udp: {port: 1}},
         });
         assert.deepEqual(both.properties.address['x-discover'], ['network', 'serial']);
+
+        const cloud = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options: withHint,
+            defaults: {name: 'foo'},
+            discovery: {cloud: {list: () => []}, needs: ['email']},
+        });
+        assert.equal(cloud.properties.address['x-discover'], 'cloud');
     });
 
     test('no hint, no marker — an adapter without discovery is not discovery-capable', () => {
