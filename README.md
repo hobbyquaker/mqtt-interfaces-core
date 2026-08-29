@@ -483,18 +483,39 @@ if (config.tv === 'auto') {
 `--discover` is exempt from mandatory options — the address it is about to go looking for must
 not be required to run it.
 
+**Bridges take all of them.** `autoAddress` refuses to guess when the network answers with
+several, which is right for an adapter that drives one device and wrong for one instance that
+bridges a whole LAN. There `autoAddresses` (plural) is the counterpart: it returns every hit as
+an array and only fails when there is none, since an empty list starts a bridge with nothing to
+bridge. Declare `discover: true` on an `array` option and the property's `type` in
+`--config-schema` tells a management UI which of the two it is getting.
+
+```js
+// govee2mqtt: one instance, every lamp on the LAN
+if (config.address.length === 1 && config.address[0] === 'auto') {
+  config.address = await autoAddresses(DISCOVERY, {config, log});
+}
+```
+
 The hint:
 
 | key           | what it does                                                                                                                                        |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ssdp`        | `{st, match(headers, address)}` — M-SEARCH to 239.255.255.250:1900, answers become candidates                                                       |
 | `mdns`        | `{service: '_googlecast._tcp', match(entry)}` — DNS-SD browse; PTR → SRV → A is resolved into `{address, name, port, txt}`                          |
-| `udp`         | `{port, payload, parse(message, rinfo), address}` — broadcast probe; `parse` returns the fields or `null` to drop                                   |
+| `udp`         | `{port, payload, parse(message, rinfo), address, bindPort}` — broadcast probe; `parse` returns the fields or `null` to drop                         |
 | `ports`       | `{label: port}` probed on every candidate → `services: {label: true\|false}`; a candidate with none open is dropped (`requirePort: false` keeps it) |
 | `requirePort` | `false` keeps a candidate whose declared ports are all closed — the announcement was proof enough                                                   |
 | `oui`         | MAC prefixes — matching entries of the ARP cache become candidates                                                                                  |
 | `serial`      | `{contains: ['busware', 'CUL'], match, dir}` — USB serial adapters from `/dev/serial/by-id`                                                         |
 | `probe`       | `async (address, entry) => fields \| null` — the last word; `null` drops the candidate                                                              |
+
+`bindPort` is for the vendors who answer to a fixed port rather than to the one the probe came
+from. Govee's LAN API is the case that forced it: the `scan` goes to 4001 and every device
+replies to 4002, so an ephemeral socket hears nothing at all. The port may already be held by a
+running instance of the same adapter, for the same reason — the probe socket sets `reuseAddr`,
+which is enough to share it on most stacks, and where it is not the probe is logged as failed and
+the other methods carry on.
 
 Every declared method runs in parallel and contributes candidates; they are merged per address
 (`sources: ['mdns', 'oui']` records who found it). A TCP sweep of the local subnets runs only
@@ -761,21 +782,21 @@ Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
 
 ## API
 
-| Export (from `mqtt-interfaces-core`)                                                                                               | Purpose                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createAdapter(opts)`                                                                                                              | the façade — see [§5](#5-indexjs--the-adapter)                                                                                                     |
-| `matchTopic(pattern, levels)`                                                                                                      | the wildcard matcher behind `subscriptions` (`+`, trailing `#`) → captured levels or `null`                                                        |
-| `parseConfig({pkg, options, defaults, examples, epilog, check, scriptName, envPrefix})`                                            | CLI + env config, `--config-schema`                                                                                                                |
-| `configSchema({pkg, envPrefix, options, defaults})`                                                                                | the JSON Schema without parsing (tests)                                                                                                            |
-| `SHARED_OPTIONS`, `SHARED_ENV`, `applySharedEnv(env, prefix)`                                                                      | the canonical option set / broker env fallback                                                                                                     |
-| `createInstaller({service, envPrefix, description, documentation, envOptions, environment, serviceExtra, beforeStart})`            | systemd template unit installer; returns `{unitFile, envFile, unitName, installService, uninstallService, handle, UNIT_PATH, CONF_DIR, STATE_DIR}` |
-| `envVarName(option, prefix)`, `instanceName(name)`                                                                                 | helpers of the installer                                                                                                                           |
-| `createLogger({envPrefix, format, color, level, write})`, `detectFormat()`, `LEVELS`                                               | logging                                                                                                                                            |
-| `parsePayload(raw)`, `toBoolean(v)`, `clampInt(v, min, max)`, `toVolume(v)`, `StatusTracker`                                       | payload helpers (`StatusTracker`: `update`, `get`, `payload`, `isRetained`, `delete`)                                                              |
-| `entity({...})`, `devicePayload({...})`, `availability(name, min)`, `discoveryId(adapter, instance)`, `discoveryTopic(prefix, id)` | Home Assistant discovery                                                                                                                           |
-| `discover(hint, opts)`, `discoverOne(hint, opts)`, `autoAddress(hint, opts)`, `runDiscovery({hint, config, log})`                  | device discovery — see [§8](#8-device-discovery--libdiscoveryjs)                                                                                   |
-| `ssdpSearch`, `mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`, `localSubnets`, `subnetHosts`, `pool`, `DISCOVERY_OPTIONS`          | the discovery pieces on their own                                                                                                                  |
-| `SPEC_VERSION`                                                                                                                     | `'2.0'`                                                                                                                                            |
+| Export (from `mqtt-interfaces-core`)                                                                                                           | Purpose                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createAdapter(opts)`                                                                                                                          | the façade — see [§5](#5-indexjs--the-adapter)                                                                                                     |
+| `matchTopic(pattern, levels)`                                                                                                                  | the wildcard matcher behind `subscriptions` (`+`, trailing `#`) → captured levels or `null`                                                        |
+| `parseConfig({pkg, options, defaults, examples, epilog, check, scriptName, envPrefix})`                                                        | CLI + env config, `--config-schema`                                                                                                                |
+| `configSchema({pkg, envPrefix, options, defaults})`                                                                                            | the JSON Schema without parsing (tests)                                                                                                            |
+| `SHARED_OPTIONS`, `SHARED_ENV`, `applySharedEnv(env, prefix)`                                                                                  | the canonical option set / broker env fallback                                                                                                     |
+| `createInstaller({service, envPrefix, description, documentation, envOptions, environment, serviceExtra, beforeStart})`                        | systemd template unit installer; returns `{unitFile, envFile, unitName, installService, uninstallService, handle, UNIT_PATH, CONF_DIR, STATE_DIR}` |
+| `envVarName(option, prefix)`, `instanceName(name)`                                                                                             | helpers of the installer                                                                                                                           |
+| `createLogger({envPrefix, format, color, level, write})`, `detectFormat()`, `LEVELS`                                                           | logging                                                                                                                                            |
+| `parsePayload(raw)`, `toBoolean(v)`, `clampInt(v, min, max)`, `toVolume(v)`, `StatusTracker`                                                   | payload helpers (`StatusTracker`: `update`, `get`, `payload`, `isRetained`, `delete`)                                                              |
+| `entity({...})`, `devicePayload({...})`, `availability(name, min)`, `discoveryId(adapter, instance)`, `discoveryTopic(prefix, id)`             | Home Assistant discovery                                                                                                                           |
+| `discover(hint, opts)`, `discoverOne(hint, opts)`, `autoAddress(hint, opts)`, `autoAddresses(hint, opts)`, `runDiscovery({hint, config, log})` | device discovery — see [§8](#8-device-discovery--libdiscoveryjs)                                                                                   |
+| `ssdpSearch`, `mdnsQuery`, `udpProbe`, `tcpProbe`, `arpTable`, `localSubnets`, `subnetHosts`, `pool`, `DISCOVERY_OPTIONS`                      | the discovery pieces on their own                                                                                                                  |
+| `SPEC_VERSION`                                                                                                                                 | `'2.0'`                                                                                                                                            |
 
 ## Management UIs: she
 

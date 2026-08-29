@@ -133,13 +133,16 @@ the convention itself is specified in
 6. ~~Device discovery module~~ — done 2026-08-28 (0.9.0, `lib/discovery.js`) with
    four pilots (hm2mqtt, lgsb2mqtt, cul2mqtt, wiim2mqtt; the eQ-3 probe of
    [hm-discover](https://github.com/hobbyquaker/hm-discover) is the worked
-   example in README §8). **Open** for the rest of the fleet: lgtv2mqtt (SSDP
-   webOS ST), fritz2mqtt (TR-064 on 49000 — reachable through a NAT cascade,
-   where SSDP is not), unifi2mqtt (the Ubiquiti UDP probe on 10001, which UniFi
-   gear answers with model and firmware) and govee2mqtt (its LAN scan, which
-   needs the answer socket bound to 4002 in the core first). ecoflow2mqtt has
-   nothing on the network to find — the inverter only talks to EcoFlow's cloud,
-   so discovery there means listing the account's devices.
+   example in README §8). govee2mqtt followed in 0.10.0, and cost the two things
+   its LAN API needed: `bindPort` on the udp probe, because Govee devices answer
+   to a fixed 4002 and ignore the source port, and `autoAddresses`, because a
+   bridge fills a list rather than the one address `autoAddress` insists on.
+   **Open** for the rest of the fleet: lgtv2mqtt (SSDP webOS ST), fritz2mqtt
+   (TR-064 on 49000 — reachable through a NAT cascade, where SSDP is not) and
+   unifi2mqtt (the Ubiquiti UDP probe on 10001, which UniFi gear answers with
+   model and firmware). ecoflow2mqtt has nothing on the network to find — the
+   inverter only talks to EcoFlow's cloud, so discovery there means listing the
+   account's devices.
 7. ~~`--install` module~~ — done (`lib/install.js`). **Open**: the shared tooling
    package. eslint/prettier config, the CI and release workflows and the
    release-notes generator are still copied per repo — the generator fix of

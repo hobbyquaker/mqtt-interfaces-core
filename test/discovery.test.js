@@ -14,6 +14,7 @@ import {
     arpTable,
     assembleServices,
     autoAddress,
+    autoAddresses,
     describe as describeEntry,
     discover,
     discoverOne,
@@ -514,6 +515,40 @@ describe('udpProbe (the hm-discover pattern)', () => {
             createSocket: () => socket,
         });
         assert.deepEqual(found, []);
+    });
+
+    test('without bindPort the socket takes an ephemeral port', async () => {
+        const socket = fakeSocket([]);
+        await udpProbe({port: 43439, payload: PROBE, ...FAST, createSocket: () => socket});
+        assert.equal(socket.boundPort, 0);
+    });
+
+    test('bindPort binds the port the devices answer to (govee: scan to 4001, replies to 4002)', async () => {
+        const socket = fakeSocket([{message: reply, address: '192.168.1.130'}]);
+        const found = await udpProbe({
+            port: 4001,
+            bindPort: 4002,
+            payload: PROBE,
+            parse: parseEq3,
+            ...FAST,
+            createSocket: () => socket,
+        });
+        assert.equal(socket.boundPort, 4002, 'bound the fixed reply port');
+        assert.equal(socket.sent[0].port, 4001, 'still sent to the probe port');
+        assert.equal(found.length, 1);
+    });
+
+    test('a bind that fails rejects rather than scanning on a port nothing answers to', async () => {
+        const socket = fakeSocket([]);
+        socket.bind = (port, callback) => {
+            void port;
+            void callback;
+            setImmediate(() => socket.emit('error', Object.assign(new Error('bind EADDRINUSE'), {code: 'EADDRINUSE'})));
+        };
+        await assert.rejects(
+            udpProbe({port: 4001, bindPort: 4002, payload: PROBE, ...FAST, createSocket: () => socket}),
+            /EADDRINUSE/,
+        );
     });
 });
 
@@ -1195,6 +1230,60 @@ describe('autoAddress', () => {
         assert.ok(
             socket.sent.some((entry) => entry.address === '172.16.24.255'),
             'probed the named address',
+        );
+    });
+});
+
+describe('autoAddresses (a bridge talks to all of them)', () => {
+    const response = Buffer.from('HTTP/1.1 200 OK\r\nSERVER: WebOS\r\n\r\n');
+
+    test('several devices are the normal outcome, not an error', async () => {
+        const socket = fakeSocket([
+            {message: response, address: '192.168.1.51'},
+            {message: response, address: '192.168.1.50'},
+        ]);
+        assert.deepEqual(
+            await autoAddresses({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}}),
+            ['192.168.1.50', '192.168.1.51'],
+            'sorted by address, both kept',
+        );
+    });
+
+    test('one device is fine too', async () => {
+        const socket = fakeSocket([{message: response, address: '192.168.1.50'}]);
+        assert.deepEqual(
+            await autoAddresses({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}}),
+            ['192.168.1.50'],
+        );
+    });
+
+    test('none is an error — an empty list would start a bridge with nothing to bridge', async () => {
+        const socket = fakeSocket([]);
+        await assert.rejects(
+            autoAddresses({ssdp: {}}, {timeout: 5, deps: {dns: NO_DNS, createSocket: () => socket}}),
+            /no device found/,
+        );
+    });
+
+    test('qualified names are preferred, and --discover-ip pins the addresses', async () => {
+        const dns = fakeDns(
+            {'192.168.1.50': ['hexa.lan.example'], '192.168.1.51': ['strip.lan.example']},
+            {'hexa.lan.example': ['192.168.1.50'], 'strip.lan.example': ['192.168.1.51']},
+        );
+        const answers = [
+            {message: response, address: '192.168.1.50'},
+            {message: response, address: '192.168.1.51'},
+        ];
+        assert.deepEqual(
+            await autoAddresses({ssdp: {}}, {timeout: 5, deps: {dns, createSocket: () => fakeSocket(answers)}}),
+            ['hexa.lan.example', 'strip.lan.example'],
+        );
+        assert.deepEqual(
+            await autoAddresses(
+                {ssdp: {}},
+                {timeout: 5, config: {discoverIp: true}, deps: {dns, createSocket: () => fakeSocket(answers)}},
+            ),
+            ['192.168.1.50', '192.168.1.51'],
         );
     });
 });

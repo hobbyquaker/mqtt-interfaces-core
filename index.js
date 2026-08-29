@@ -19,6 +19,7 @@ export {
     discover,
     discoverOne,
     autoAddress,
+    autoAddresses,
     runDiscovery,
     discoveryKinds,
     describe as describeDevice,

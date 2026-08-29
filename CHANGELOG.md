@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.10.0
+
+Discovery for bridges, prompted by govee2mqtt: its LAN scan could not be expressed with what
+0.9.0 offered.
+
+### Added
+
+- `udpProbe({bindPort})` and the `bindPort` key on a `udp` hint: bind the probe socket to a fixed
+  local port. Most devices answer to the port the probe came from; some ignore it and answer to a
+  fixed one, so an ephemeral socket hears nothing at all. Govee's LAN API is that case — the
+  `scan` goes to 4001 and every device replies to 4002. The socket sets `reuseAddr`, so the port
+  can usually be shared with a running instance of the same adapter; where a stack refuses, the
+  probe is logged as failed and the other methods carry on. Default 0 (ephemeral) — unchanged for
+  every existing hint.
+- `autoAddresses(hint, options)`: the counterpart of `autoAddress` for a bridge whose address
+  option is a list. One instance talks to every device it finds, so several hits are the normal
+  outcome rather than the refusal `autoAddress` makes of them; none is still an error, because an
+  empty list starts a bridge with nothing to bridge. Same name preference — the verified `fqdn`
+  when dns knows the device, the address otherwise, and `--discover-ip` pins the address.
+
+### Changed
+
+- `x-discover` may now sit on an `array` property. The property's own `type` in `--config-schema`
+  is what tells a management UI whether it is filling in one device or all of them, so no new
+  marker was needed (she I13).
+
 ## 0.9.0
 
 ### Added
