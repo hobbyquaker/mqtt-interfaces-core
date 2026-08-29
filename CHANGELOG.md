@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.3
+
+### Fixed
+
+- `autoAddress()` / `autoAddresses()` no longer announce "discovering the device on the network"
+  for a hint that scans no network: a cloud hint logs "in the account", a serial-only one "on this
+  host". Network hints are unchanged.
+
 ## 0.11.2
 
 ### Added

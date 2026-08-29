@@ -1241,6 +1241,7 @@ describe('autoAddress', () => {
 });
 
 describe('cloud discovery (the vendor knows, the network does not)', () => {
+    const SSDP_OK = Buffer.from('HTTP/1.1 200 OK\r\nSERVER: WebOS\r\n\r\n');
     const BOUND = [
         {id: 'BK01ZXXXXXXXXXXX', name: 'Balcony', model: 'STREAM Micro', online: true},
         {id: 'BK01ZYYYYYYYYYYY', name: 'Garage', model: 'STREAM Micro', online: false},
@@ -1330,6 +1331,26 @@ describe('cloud discovery (the vendor knows, the network does not)', () => {
         assert.match(describeEntry({address: 'BK01ZXXXXXXXXXXX', name: 'Garage', online: false}), /offline/);
         assert.doesNotMatch(describeEntry({address: 'BK01ZXXXXXXXXXXX', name: 'Balcony', online: true}), /offline/);
         assert.doesNotMatch(describeEntry({address: '192.168.1.20', name: 'a tv'}), /offline/);
+    });
+
+    test('the log line says where it is looking, not "on the network"', async () => {
+        const lines = [];
+        const log = {...NO_LOG_LEVELS, info: (...args) => lines.push(args.join(' '))};
+        await autoAddress({cloud: {list: async () => [BOUND[0]]}}, {timeout: 5, names: false, log});
+        assert.match(lines[0], /in the account/);
+        assert.doesNotMatch(lines[0], /network/);
+
+        const netLines = [];
+        await autoAddress(
+            {ssdp: {}},
+            {
+                timeout: 5,
+                names: false,
+                log: {...NO_LOG_LEVELS, info: (...args) => netLines.push(args.join(' '))},
+                deps: {createSocket: () => fakeSocket([{message: SSDP_OK, address: '192.168.1.9'}])},
+            },
+        );
+        assert.match(netLines[0], /on the network/, 'unchanged for a network hint');
     });
 
     test('one device: --sn auto takes it', async () => {
