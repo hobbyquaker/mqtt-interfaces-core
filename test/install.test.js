@@ -82,6 +82,41 @@ describe('unitFile', () => {
         // the shared broker file must come first so the instance file can override it
         assert.ok(unit.indexOf('broker.env') < unit.indexOf('/etc/foo2mqtt/%i.env'));
     });
+
+    test('an adapter is sandboxed by default', () => {
+        const unit = installer.unitFile('/usr/bin/node index.js');
+        assert.match(unit, /^NoNewPrivileges=true$/m);
+        assert.match(unit, /^ProtectSystem=full$/m);
+        assert.match(unit, /^ProtectHome=true$/m);
+        assert.match(unit, /^PrivateTmp=true$/m);
+    });
+
+    test('user: runs the unit as someone else, group with it', () => {
+        const asRoot = createInstaller({service: 'foo2mqtt', envPrefix: 'FOO2MQTT', user: 'root'});
+        const unit = asRoot.unitFile('/usr/bin/node index.js');
+        assert.match(unit, /^User=root$/m);
+        assert.match(unit, /^Group=root$/m);
+        assert.match(unit, /^StateDirectory=foo2mqtt\/%i$/m, 'the state directory still belongs to the service');
+    });
+
+    test('hardening: false drops the sandbox — a spawned child would inherit it', () => {
+        /*
+         * mqttpc exists to run other programs. ProtectHome would hide /home from a backup script
+         * and NoNewPrivileges stops sudo working at all, so an adapter that spawns things cannot
+         * be sandboxed and still do its job.
+         */
+        const unit = createInstaller({
+            service: 'mqttpc',
+            envPrefix: 'MQTTPC',
+            hardening: false,
+        }).unitFile('/usr/bin/node index.js');
+        assert.doesNotMatch(unit, /NoNewPrivileges/);
+        assert.doesNotMatch(unit, /ProtectSystem/);
+        assert.doesNotMatch(unit, /ProtectHome/);
+        assert.doesNotMatch(unit, /PrivateTmp/);
+        assert.match(unit, /^User=mqttpc$/m, 'still not root unless asked');
+        assert.match(unit, /^\[Install\]$/m, 'the unit is still well formed');
+    });
 });
 
 describe('helpers', () => {

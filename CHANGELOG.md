@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.0
+
+### Added
+
+- **`createInstaller({user, hardening})`** — the unit's `User=`/`Group=`, and whether the systemd
+  sandbox is emitted at all. Both exist for mqttpc, an adapter whose job is running other programs:
+  the sandbox is inherited by every child, so `ProtectHome=true` hides `/home` from a backup script
+  and `NoNewPrivileges=true` stops `sudo` from working — which also meant that no amount of
+  sudoers configuration could give such an adapter a specific privilege. `serviceExtra` could not
+  express this: its lines are emitted before the hardening block, so they were always overridden.
+  Defaults are unchanged, so every existing adapter keeps the same unit byte for byte.
+- A `user` other than the service's own is checked with `id` during `--install` rather than
+  created, so a typo fails there instead of leaving an unstartable unit behind; the state and
+  config directories are chowned to it.
+
 ## 0.13.0
 
 ### Added

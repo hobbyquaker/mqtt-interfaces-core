@@ -252,6 +252,7 @@ const installer = createInstaller({
   description: `${SERVICE} %i - XYZ to MQTT bridge`,
   documentation: 'https://github.com/you/xyz2mqtt',
   serviceExtra: ['SupplementaryGroups=dialout'], // only what the device needs
+  // user: 'root', hardening: false,  // only for an adapter that runs other programs (mqttpc)
   // beforeStart: ({name, argv, stateDir, log}) => copy a pairing key into stateDir, …
 });
 
@@ -271,6 +272,14 @@ exits, otherwise it returns `false`. What `--install --name <n> <options>` does,
 `--uninstall --name <n>` stops, disables and removes the instance and its env file; the template
 unit goes when the last instance is gone; the state directory is kept. `Restart=always` is what
 makes `maintenance/set/restart` (a clean `exit 0`) come back.
+
+**An adapter that runs other programs** (mqttpc) is the exception to both defaults. The sandbox is
+inherited by every child, so `ProtectHome` hides `/home` from a backup script, `ProtectSystem=full`
+makes `/usr` read-only for it and `NoNewPrivileges=true` stops `sudo` working at all — a process
+controller cannot be sandboxed and still do its job. `hardening: false` drops that block, and
+`user: 'root'` runs the unit as root for the rare adapter that has no other way. Neither is
+something a device adapter should ever need; `user` is also the escape hatch for an existing
+account an adapter must share.
 
 Adapter-specific installer work goes into `beforeStart` (e.g. lgtv2mqtt copies the TV pairing key
 into the state directory, alexa-remote-mqtt the login cookie) — never into a second script. If an
