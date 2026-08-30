@@ -501,6 +501,25 @@ if (config.tv === 'auto') {
 `--discover` is exempt from mandatory options — the address it is about to go looking for must
 not be required to run it.
 
+**A sink has no state to publish.** `--json-payloads`, `--ha-discovery` and `--ha-prefix` configure
+things an adapter that only forwards messages never does. Left in they appear in `--help`, in
+`--config-schema` — so in a config UI, where someone will reasonably try to use them — and in the
+env file, all configuring nothing. `publishesStatus: false` drops the first, `publishesDiscovery:
+false` the other two:
+
+```js
+export default parseConfig({
+  pkg,
+  options: OPTIONS,
+  defaults: {name: 'influx'},
+  publishesStatus: false, // no status items: it writes to influx, not to mqtt
+  publishesDiscovery: false, // no `discovery` passed to createAdapter, so no HA entities
+});
+```
+
+They are independent: mqttpc publishes items (`pid`, `exit`, `stdout`) but announces no entities, so
+it sets only the second. Both default to true, so nothing changes for an ordinary adapter.
+
 **A scan that needs credentials.** `hint.needs` names the options the scan itself consumes, and
 they show up as `x-discover-needs` on the marked property in `--config-schema`. `--discover` drops
 mandatory options — the address it is going looking for must not be required to look for it — but a

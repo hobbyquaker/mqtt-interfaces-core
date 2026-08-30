@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.15.0
+
+### Added
+
+- **`parseConfig({publishesStatus, publishesDiscovery})`** — drop the shared options an adapter's
+  own shape makes meaningless. A sink (influx4mqtt, mqtt2elasticsearch) subscribes and forwards: it
+  never calls `pubStatus`, so `--json-payloads` configures nothing, and it passes no `discovery` to
+  `createAdapter`, so `--ha-discovery` / `--ha-prefix` are inert — `publishDiscovery()` returns
+  immediately without a discovery model. Offered anyway, they showed up in `--help`, in
+  `--config-schema` and therefore in she's config form, where they invite someone to configure
+  behaviour that does not exist, and `--install` wrote them into the env file.
+- The two are independent: mqttpc publishes status items but announces no Home Assistant entities,
+  so it sets only `publishesDiscovery: false`. An adapter that declares one of these options itself
+  keeps its own definition. Both default to true, so every existing adapter is unchanged.
+
 ## 0.14.0
 
 ### Added

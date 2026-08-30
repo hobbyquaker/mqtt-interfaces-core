@@ -308,6 +308,74 @@ describe('discovery options', () => {
         );
     });
 
+    test('a sink drops the options that only mean something for device state', () => {
+        // influx4mqtt publishes no items and no entities: offering these would be offering nothing
+        const sink = configSchema({
+            pkg,
+            envPrefix: 'FOO2MQTT',
+            options,
+            defaults: {name: 'foo'},
+            publishesStatus: false,
+            publishesDiscovery: false,
+        });
+        for (const key of ['json-payloads', 'ha-discovery', 'ha-prefix']) {
+            assert.equal(sink.properties[key], undefined, `${key} should be gone`);
+        }
+        // everything a sink does use is still there
+        for (const key of ['mqtt-url', 'name', 'maintenance', 'stats-interval', 'verbosity']) {
+            assert.ok(sink.properties[key], `${key} should stay`);
+        }
+    });
+
+    test('the two opt-outs are independent', () => {
+        const noHa = configSchema({pkg, envPrefix: 'F', options, defaults: {}, publishesDiscovery: false});
+        assert.equal(noHa.properties['ha-discovery'], undefined);
+        assert.ok(noHa.properties['json-payloads'], 'mqttpc publishes items but announces no entities');
+
+        const noStatus = configSchema({pkg, envPrefix: 'F', options, defaults: {}, publishesStatus: false});
+        assert.equal(noStatus.properties['json-payloads'], undefined);
+        assert.ok(noStatus.properties['ha-discovery']);
+    });
+
+    test('by default every adapter keeps all three, as before', () => {
+        const schema = configSchema({pkg, envPrefix: 'F', options, defaults: {}});
+        for (const key of ['json-payloads', 'ha-discovery', 'ha-prefix']) {
+            assert.ok(schema.properties[key], key);
+        }
+    });
+
+    test('an adapter that declares one of them itself keeps its own', () => {
+        const own = configSchema({
+            pkg,
+            envPrefix: 'F',
+            options: {...options, 'ha-prefix': {type: 'string', describe: 'mine', default: 'x'}},
+            defaults: {},
+            publishesDiscovery: false,
+        });
+        assert.equal(own.properties['ha-prefix'].description, 'mine');
+        assert.equal(own.properties['ha-discovery'], undefined);
+    });
+
+    test('parseConfig drops them from the parsed config too, not just the schema', () => {
+        const c = parseConfig({
+            pkg,
+            options,
+            defaults: {name: 'foo'},
+            publishesStatus: false,
+            publishesDiscovery: false,
+            argv: ['-a', '10.0.0.1'],
+            env: {},
+            exit: () => {},
+            print: () => {},
+        });
+        assert.equal(c.haDiscovery, undefined);
+        assert.equal(c.haPrefix, undefined);
+        assert.equal(c.jsonPayloads, undefined);
+        assert.equal(c.address, '10.0.0.1');
+        // and so they cannot reach the env file, which derives from $options
+        assert.equal(Object.hasOwn(c.$options, 'ha-discovery'), false);
+    });
+
     test('no hint, no marker — an adapter without discovery is not discovery-capable', () => {
         const schema = configSchema({
             pkg,
