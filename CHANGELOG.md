@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.1
+
+### Fixed
+
+- **`--config-schema` and `--discover` no longer truncate on a pipe.** Both print and then call
+  `process.exit()` immediately; a write to a pipe is asynchronous, so everything past the pipe
+  buffer was silently dropped — `hm2mqtt --config-schema | jq` lost all but the first ~8 KB of a
+  9.5 KB schema, and did so intermittently, depending on how fast the reader drained. Both paths
+  write synchronously now (`lib/print.js`), so a management UI or a shell pipeline gets the whole
+  document. Redirecting to a file was never affected.
+
 ## 0.15.0
 
 ### Added
