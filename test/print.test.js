@@ -1,9 +1,12 @@
 /**
  * Output that has to survive process.exit().
  *
- * console.log on a pipe queues the write and returns, so printing a big JSON document and exiting
- * immediately truncates it at the pipe buffer - and only sometimes, depending on how fast the
- * reader drains. That is how `--config-schema | jq` used to lose everything past ~8 KB.
+ * Whether console.log to a pipe is synchronous is a property of the platform - node writes pipes
+ * synchronously on Linux and Windows but asynchronously on macOS - so printing a big JSON document
+ * and exiting immediately truncates it there at the pipe buffer, and only sometimes, depending on
+ * how fast the reader drains. That is how `--config-schema | jq` lost everything past 8 KB on a
+ * mac while looking fine in CI. These tests assert the outcome we do control: the whole document
+ * arrives, on every platform.
  */
 
 import {test, describe} from 'node:test';
@@ -32,15 +35,6 @@ describe('printSync', () => {
             process.exit(0);
         `);
         assert.equal(out.length, size + 1, 'stdout was truncated');
-    });
-
-    test('console.log in the same place does not - which is why this exists', () => {
-        const size = 200000;
-        const out = runThroughPipe(`
-            console.log('x'.repeat(${size}));
-            process.exit(0);
-        `);
-        assert.ok(out.length < size, `console.log wrote ${out.length} of ${size} - the bug would be gone`);
     });
 
     test('--config-schema reaches a pipe completely', () => {
