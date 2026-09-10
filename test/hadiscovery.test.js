@@ -13,8 +13,12 @@ describe('ids and topics', () => {
     test('availability template from connected', () => {
         const a = availability('foo');
         assert.equal(a[0].t, 'foo/connected');
-        assert.match(a[0].avty_tpl, />= 2/);
-        assert.match(availability('foo', 1)[0].avty_tpl, />= 1/);
+        // lgtv2mqtt #20: inside an entry of an availability *list* the template key is
+        // `val_tpl`. `avty_tpl` expands to `availability_template`, which Home Assistant's schema
+        // for a list entry does not allow - and it refuses the whole device payload over it.
+        assert.equal(a[0].avty_tpl, undefined);
+        assert.match(a[0].val_tpl, />= 2/);
+        assert.match(availability('foo', 1)[0].val_tpl, />= 1/);
     });
 });
 
@@ -106,7 +110,7 @@ describe('per-device availability (bridges)', () => {
     test('availability replaces the default and adds avty_mode all', () => {
         const avty = [
             ...availability('foo'),
-            {t: 'foo/status/kitchen/connected', avty_tpl: "{{ 'online' if value_json.val else 'offline' }}"},
+            {t: 'foo/status/kitchen/connected', val_tpl: "{{ 'online' if value_json.val else 'offline' }}"},
         ];
         const {payload} = devicePayload({pkg, name: 'foo', id: 'foo2mqtt_G090', components, availability: avty});
         assert.deepEqual(payload.avty, avty);
@@ -116,7 +120,7 @@ describe('per-device availability (bridges)', () => {
     test('a single entry needs no mode, an explicit mode wins', () => {
         const one = devicePayload({pkg, name: 'foo', components, availability: availability('foo', 1)});
         assert.equal(one.payload.avty_mode, undefined);
-        assert.match(one.payload.avty[0].avty_tpl, />= 1/);
+        assert.match(one.payload.avty[0].val_tpl, />= 1/);
         const forced = devicePayload({pkg, name: 'foo', components, availabilityMode: 'any'});
         assert.equal(forced.payload.avty_mode, 'any');
     });

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.15.2
+
+### Fixed
+
+- **Home Assistant refused every device published by an adapter on this core** (lgtv2mqtt
+  [#20](https://github.com/hobbyquaker/lgtv2mqtt/issues/20)). The template of an entry of an
+  `availability` list is `val_tpl` (`value_template`); `availability()` emitted `avty_tpl`, which
+  expands to `availability_template` — a key HA's schema for a list entry does not allow
+  (`mqtt/schemas.py::_MQTT_AVAILABILITY_LIST_SCHEMA`: `topic`, `payload_available`,
+  `payload_not_available`, `value_template`, no extras). The device payload is validated as a
+  whole, so HA logged "Invalid MQTT device discovery payload" through
+  `homeassistant.components.mqtt.discovery` and created nothing of the device. Every adapter on
+  this core needs the fix and a release of its own.
+
 ## 0.15.1
 
 ### Fixed
