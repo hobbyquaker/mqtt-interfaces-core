@@ -6,7 +6,7 @@ It absorbs the ~80% every adapter repeats so an adapter is left with its device 
 an item table.
 
 **Status: 0.x — API may still change.** Adapters on the core: lgtv2mqtt 3, cul2mqtt 1,
-alexa-remote-mqtt 2, lgsb2mqtt 2. See [ROADMAP.md](ROADMAP.md).
+alexa-remote-mqtt 2, lgsb2mqtt 2.
 
 Contents: [What you get](#what-you-get) · [Minimal adapter](#minimal-adapter) ·
 [Building an adapter](#building-an-adapter) (the complete guide) ·
@@ -120,7 +120,7 @@ xyz2mqtt/
 ├── package.json        see below
 ├── README.md           options table, topics, HA, install, changelog pointer
 ├── CHANGELOG.md        `## x.y.z` sections; the release notes are generated from them
-├── ROADMAP.md / AGENTS.md   plan and agent notes (optional but the fleet does it)
+├── AGENTS.md           agent notes (optional but the fleet does it)
 ├── Dockerfile          node:22-alpine, env config (template below)
 ├── .dockerignore       node_modules, .git, .github, *.md, test, scripts, deploy.sh
 ├── deploy.sh           dev deploy to a host by tarball (from cul2mqtt)
