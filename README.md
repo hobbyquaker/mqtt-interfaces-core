@@ -1,7 +1,9 @@
 # mqtt-interfaces-core
 
 Core library for writing `xyz2mqtt` interfaces ("adapters") in Node.js that follow the
-[mqtt-smarthome](https://github.com/mqtt-smarthome/mqtt-smarthome) convention (spec 2.x).
+[mqtt-smarthome](https://github.com/mqtt-smarthome/mqtt-smarthome) convention,
+[SPEC.md](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md) 2.0. The topics,
+payloads and options it specifies are not repeated here.
 It absorbs the ~80% every adapter repeats so an adapter is left with its device protocol and
 an item table.
 
@@ -10,7 +12,7 @@ alexa-remote-mqtt 2, lgsb2mqtt 2.
 
 Contents: [What you get](#what-you-get) · [Minimal adapter](#minimal-adapter) ·
 [Building an adapter](#building-an-adapter) (the complete guide) ·
-[Conventions implemented](#conventions-implemented) · [API](#api) ·
+[Specification](#specification) · [API](#api) ·
 [Management UIs: she](#management-uis-she)
 
 ## What you get
@@ -363,34 +365,35 @@ re-publishes all retained status items after a reconnect. Connect to your device
 the broker and keep reconnecting to it forever with a modest interval (10 s) — the adapter is a
 daemon, an unreachable device is normal operation, not a reason to exit.
 
-### 6. Items, topics, payloads — the conventions
+### 6. Items, topics, payloads
 
-- **`<name>/connected`** (retained): `0` LWT/shutdown, `1` broker connected but device not,
-  `2` device connected. Call `setDeviceConnected()` on every transition; the core does the rest.
-- **`<name>/status/<item>`** (retained): every state value. `item` is **snake_case**, may be
-  nested (`<protocol>/<address>/<field>` for bridges, `bridge/devices` for bridge-level state),
-  never contains `+`, `#` or empty levels. Values: booleans as `true`/`false`, numbers as numbers,
-  everything else as strings or JSON objects/arrays. Payload is `{"val": …, "ts": <ms>, "lc": <ms>}`
-  (`lc` = last change) unless the instance runs with `--no-json-payloads`; `pubStatus()` builds it.
-- **Events** (a button press, a spoken command, a progress tick — things that have no "current
-  value"): `pubStatus(item, v, {retain: false})`. They are not re-published after a reconnect but
-  stay readable via `get()` for discovery.
-- **`clearStatus(item)`** when an item disappears for good (a device that left a bridge): clears
-  the retained payload.
-- **Leftovers of a previous run**: an adapter whose item set is dynamic (clients, devices, apps)
-  cannot know what it retained before a restart — a client that left meanwhile stays
-  `present: true` on the broker for ever. `createAdapter({readback: true})` reads the retained
+The topics, retain rules and payload formats are the
+[mqtt-smarthome specification](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md)
+(sections 3–7); the core implements them. What an adapter does for it:
+
+- **`setDeviceConnected(bool)`** on every transition of the device connection; the core publishes
+  `<name>/connected`.
+- **`pubStatus(item, value)`** for every state value — it publishes `<name>/status/<item>`
+  retained, as `{val, ts, lc}` or plain as the instance is configured. Item names follow the spec
+  (§3); bridges nest them (`<protocol>/<address>/<field>`, `bridge/devices`).
+- **Events** (a button press, a spoken command, a progress tick): `pubStatus(item, v, {retain:
+false})`. They are not re-published after a reconnect but stay readable via `get()` for discovery.
+- **`clearStatus(item)`** when an item disappears for good (a device that left a bridge).
+- **Leftovers of a previous run** (spec §3.2): an adapter whose item set is dynamic (clients,
+  devices, apps) passes `createAdapter({readback: true})`, which reads the retained
   `<name>/status/#` back on the first connect; once the adapter has its first complete picture it
   clears what is stale: `adapter.readbackDone().then(() => { for (const item of
-adapter.staleStatus()) clearStatus(item); })`. Filter `staleStatus()` by the prefixes the
-  adapter owns dynamically; a fixed item is published anyway.
-- **Extra fields**: `pubStatus(item, v, {extra: {hm: {...}}})` adds an adapter's own meta data
-  next to `val`/`ts`/`lc` in the JSON payload (`{val, ts, lc, hm}`; ignored with
-  `--no-json-payloads`, never overrides the three). Values that carry a device-side time pass
-  `{ts, lc}` (ms) instead of the adapter's clock.
+adapter.staleStatus()) clearStatus(item); })`. Filter `staleStatus()` by the prefixes the adapter
+  owns dynamically; a fixed item is published anyway.
+- **Extra fields**: `pubStatus(item, v, {extra: {hm: {...}}})` adds the adapter's own meta data
+  next to `val`/`ts`/`lc` (ignored with `--no-json-payloads`, never overrides the three). Values that
+  carry a device-side time pass `{ts, lc}` (ms) instead of the adapter's clock.
+- **`onSet(parts, value)`** handles `<name>/set/<item>[/...]`; `value` is already unwrapped from
+  `{val}`. Use `toBoolean`, `clampInt`, `toVolume` for the tolerant parsing the spec asks for (§5.3),
+  and let the status follow from the device's feedback. Throw to have a failure logged at `warn`.
 - **Own topics** besides `set/#` (a command tree that is not a `set`, an RPC pass-through):
   `createAdapter({subscriptions: {'paramset/#': handler}})` subscribes `<name>/paramset/#` and
-  dispatches like `onSet`. Keep them rare; `set/<item>` is the convention.
+  dispatches like `onSet`. Keep them rare.
 - **Sinks** — an adapter whose subject is other adapters' traffic rather than a device of its own
   (influx4mqtt, mqtt2elasticsearch): `createAdapter({listen: {'+/status/#': handler}})` subscribes
   the pattern **as given**, anywhere on the broker, not under `<name>/`. The handler gets
@@ -399,27 +402,18 @@ adapter.staleStatus()) clearStatus(item); })`. Filter `staleStatus()` by the pre
   the broker replaying its backlog on subscribe. The adapter's own `set` and `maintenance` are
   matched first, so a wide pattern cannot swallow its own commands; its `status` topics are
   ordinary traffic and do reach the sink.
-- **`<name>/set/<item>[/...]`**: commands. Accept plain payloads (`50`, `true`, `on`, text) and
-  `{"val": …}`; use `toBoolean`, `clampInt`, `toVolume` for tolerant parsing. A `set` on an item
-  should result in a `status` update from the device's feedback, not from echoing the command.
-- **`<name>/info`** (retained): `name` (npm package), `version`, `spec`, `node`, `host`, `pid`,
-  `started`, `maintenance`, plus your `info` extras (`tv`, `cul`, `mode`). Keep it small and static;
-  it is not a status topic.
-- **`<name>/maintenance/set/loglevel`** (`error|warn|info|debug`) and **`…/restart`** — provided by
-  the core; `--no-maintenance` turns them off for untrusted brokers.
-- **`<name>/maintenance/stats`** (retained, every `--stats-interval` seconds, default 60, `0` = off):
-  `rss`, `heapUsed`, `heapTotal` (bytes), `cpu` (percent of one core over the interval), `eventLoopLag`
-  (worst ms in the interval), `uptime` (s), `ts` — process stats for dashboards such as she's
-  Instances tab. Provided by the core, nothing to do in the adapter.
-- **Raw/protocol topics** (`<name>/raw`, `<name>/set/raw`) are opt-in (`--publish-raw`,
-  `--raw-set`), never on by default: a raw transmitter is a security surface.
-- Topic names are API: do not rename items outside a major release; document the migration table
-  in the README when you do (alexa-remote-mqtt 2.0's README shows the pattern).
+- **`info`** extras (`tv`, `cul`, `mode`) are the only part of `<name>/info` an adapter supplies;
+  the maintenance topics and `<name>/maintenance/stats` need nothing from the adapter.
+- **Raw/protocol topics** (`<name>/raw`, `<name>/set/raw`) sit behind opt-in options
+  (`--publish-raw`, `--raw-set`), off by default.
+- Renaming items is a major release; document the migration table in the README when you do
+  (alexa-remote-mqtt 2.0's README shows the pattern).
 
 ### 7. Home Assistant discovery — lib/hadiscovery.js
 
-Device-based discovery (`<ha-prefix>/device/<id>/config`, HA 2024.4+), on by default. Keep the
-builder pure and test it: items in, device block out.
+The interface description of the spec ([§8](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md#8-interface-description-home-assistant-mqtt-discovery):
+device-based discovery, Home Assistant 2024.11 and later). Keep the builder pure and test it: items
+in, device block out.
 
 ```js
 import {entity, discoveryId} from 'mqtt-interfaces-core';
@@ -675,15 +669,9 @@ Raspberry Pi.
 
 `adapter.log` is a `createLogger()` (levels `debug`/`info`/`warn`/`error`; journald format with
 `<N>` priorities and no own timestamp when running under systemd; text with colours on a TTY;
-`<PREFIX>_LOG_FORMAT=journal|text` overrides). Rules the fleet follows:
-
-- `debug`: every raw exchange, prefixed `mqtt <` / `mqtt >` (the core) and `<device> <` /
-  `<device> >` (you). Connection attempts.
-- `info`: lifecycle — starting, connected, subscribed, discovery published, shutting down.
-- `warn`: an unreachable or misbehaving device, a rejected `set`, a maintenance action. Outcomes,
-  not attempts.
-- `error`: only things that need a human (bad config, unrecoverable state). Never swallow device
-  errors — log them once, dedupe repeats (log the first, then `debug` until it changes).
+`<PREFIX>_LOG_FORMAT=journal|text` overrides). The core logs its own traffic as `mqtt <` /
+`mqtt >` at `debug`; log the device's as `<device> <` / `<device> >`. Which level a message gets is
+the spec's [§11](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md#11-logging-recommended).
 
 ### 10. Tests, lint, CI, release
 
@@ -806,34 +794,13 @@ npm version.
 - [ ] Checked in she: the instance shows up, the config form renders every option sensibly,
       secrets are masked, the map file is editable, logs stream.
 
-## Conventions implemented
+## Specification
 
-| topic                             | retained | notes                                                                                          |
-| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `<name>/connected`                | yes      | `0` LWT/shutdown, `1` mqtt only, `2` mqtt + device                                             |
-| `<name>/status/<item>`            | yes      | `{val, ts, lc}` JSON (+ adapter extras), or plain value with `--no-json-payloads`              |
-| `<name>/set/<item>[/...]`         | —        | plain value or `{"val": ...}`; handled by the adapter's `onSet`                                |
-| `<name>/info`                     | yes      | `name, version, spec, node, host, pid, started, maintenance, ...`                              |
-| `<name>/maintenance/set/loglevel` | —        | `error`/`warn`/`info`/`debug`; `--no-maintenance` disables                                     |
-| `<name>/maintenance/set/restart`  | —        | graceful shutdown + exit 0; the supervisor restarts the process                                |
-| `<name>/maintenance/stats`        | yes      | `rss, heapUsed, heapTotal, cpu, eventLoopLag, uptime, ts` every `--stats-interval` s (0 = off) |
-| `<ha-prefix>/device/<id>/config`  | yes      | HA device discovery, on by default; `--no-ha-discovery` clears it                              |
-
-`discovery()` returns one device block, or an array of them for a bridge that sees several physical
-devices (one `config` topic per device, `device.via_device` pointing at the bridge; devices missing
-from a later result are cleared). A device block may carry its own `availability` array (instead of
-the default `<name>/connected` entry) so that one device of a bridge can be shown as unavailable
-while the bridge itself is fine; with more than one entry `avty_mode: 'all'` is added.
-
-`pubStatus(item, value, {retain: false})` publishes an event (a spoken command, a progress tick):
-it is not re-published after an mqtt reconnect, but the value stays readable via `get()`.
-`clearStatus(item)` forgets an item and clears its retained payload.
-
-Shared CLI options: `--mqtt-url/-u/--url`, `--mqtt-username`, `--mqtt-password`,
-`--mqtt-client-id-prefix`, `--mqtt-tls-ca`, `--name/-n`, `--json-payloads`, `--ha-discovery`,
-`--ha-prefix`, `--maintenance`, `--stats-interval`, `--verbosity/-v`, `--install`, `--uninstall`,
-`--config-schema`. All of them also as `<ADAPTER>_<OPTION>` environment variables; `MQTT_URL`, `MQTT_USERNAME`,
-`MQTT_PASSWORD`, `MQTT_TLS_CA` unprefixed as fallback (the client id prefix is per instance).
+The core implements [mqtt-smarthome SPEC.md](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md) 2.0 (`SPEC_VERSION`, announced in every
+`<name>/info`): sections 3–8 completely, the recommendations of sections 9–11 (shared options and
+environment variables, `--config-schema`, device discovery, logging) as described in the guide
+above. The spec is the reference for topics, retain rules, payloads, `info`, the maintenance topics
+and Home Assistant discovery; this README only describes how the library does it.
 
 ## API
 
@@ -859,22 +826,22 @@ There is no standalone fleet manager: [she](https://github.com/hobbyquaker/she) 
 optional) manages instances of adapters built on this core — inventory from `<name>/info` and
 `<name>/connected`, restart and log level over the maintenance topics, and, via the systemd
 installer layout, config forms from `--config-schema`, install/uninstall, updates, file editing
-and per-instance broker credentials on the host. Everything it needs is part of the convention
-described above; the specifics:
+and per-instance broker credentials on the host. Everything it needs is part of the
+specification; the specifics:
 
 - **Catalog membership** is simply _depending on `mqtt-interfaces-core`_: she lists the packages
   of the npm publishers the user trusts (`services.trustedPublishers`, default the fleet's author)
   whose latest version depends on the core. No keyword, no registration. The `mqttInterfaces`
   field is optional metadata for the catalog (`needs`, `serviceExtra`).
-- **Config forms** come from `--config-schema`: `x-env` maps a property to its env variable,
-  `x-secret` masks it, `x-file` makes it editable in a Monaco editor (JSON validated against the
+- **Config forms** come from `--config-schema` (keywords in [SPEC.md §9](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md#9-cli-and-environment-conventions-recommended)):
+  `x-secret` values are masked, an `x-file` is editable in a Monaco editor (JSON validated against the
   shipped schema, YAML linted) with "create from example".
 - **Host layout** she relies on: the template unit with `EnvironmentFile=/etc/<adapter>/%i.env`,
   `/etc/<adapter>/<name>.env`, `/var/lib/<adapter>/<name>/`, the wrapper or symlink
   `/usr/local/bin/<adapter>`. she only reads and writes inside the two directories.
 - **Broker credentials**: she can write its own broker settings into an instance's env file, or
   create a dedicated Mosquitto dynsec identity per instance with an ACL limited to `<name>/#` and
-  `homeassistant/#` — which is exactly what the conventions above make an adapter need.
+  `homeassistant/#` — which is exactly what the specification makes an adapter need.
 
 ## License
 
