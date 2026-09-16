@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.0
+
+### Added
+
+- **Readback of retained status** — `createAdapter({readback: true})`, off by default: on the
+  first broker connect the core subscribes `<name>/status/#`, collects what a previous run left
+  retained until the broker has been quiet for `readbackQuiet` ms (default 1 s), and unsubscribes.
+  `readbackDone()` resolves with the collected items, `staleStatus()` lists those this run has not
+  published, and `clearStatus(item)` clears such a leftover too. For adapters whose item set is
+  dynamic (clients, devices, apps), so that nothing stays `present: true` from a previous life
+  (unifi2mqtt [#22](https://github.com/hobbyquaker/unifi2mqtt/issues/22)).
+
 ## 0.15.2
 
 ### Fixed

@@ -13,6 +13,7 @@ class FakeMqtt extends EventEmitter {
         super();
         this.published = [];
         this.subscribed = [];
+        this.unsubscribed = [];
         this.ended = false;
     }
     publish(topic, payload, options, cb) {
@@ -23,6 +24,9 @@ class FakeMqtt extends EventEmitter {
     }
     subscribe(topics) {
         this.subscribed.push(...(Array.isArray(topics) ? topics : [topics]));
+    }
+    unsubscribe(topics) {
+        this.unsubscribed.push(...(Array.isArray(topics) ? topics : [topics]));
     }
     end(_force, _opts, cb) {
         this.ended = true;
@@ -84,6 +88,48 @@ function setup(overrides = {}, configOverrides = {}) {
     process.on = onSpy;
     return {adapter, client, lines, sets, config};
 }
+
+describe('readback of retained status', () => {
+    test('collects the retained backlog, ignores echoes, names stale items, clears them', async () => {
+        const {client, adapter, lines} = setup({readback: true, readbackQuiet: 20});
+        client.emit('connect');
+        assert.ok(client.subscribed.includes('foo/status/#'));
+        client.deliver('foo/status/a', '1', {retain: true});
+        client.deliver('foo/status/x/y', '{"val":2}', {retain: true});
+        adapter.pubStatus('a', 1);
+        client.deliver('foo/status/a', '1', {retain: false}); // the broker echoing our own publish
+        const items = await adapter.readbackDone();
+        assert.deepEqual([...items.keys()].sort(), ['a', 'x/y']);
+        assert.equal(items.get('x/y'), '{"val":2}');
+        assert.deepEqual(client.unsubscribed, ['foo/status/#']);
+        assert.deepEqual(adapter.staleStatus(), ['x/y']);
+        assert.equal(adapter.clearStatus('x/y'), true);
+        const cleared = client.last('foo/status/x/y');
+        assert.equal(cleared.payload, '');
+        assert.equal(cleared.options.retain, true);
+        assert.deepEqual(adapter.staleStatus(), []);
+        assert.equal(adapter.clearStatus('x/y'), false);
+        assert.ok(!lines.some((l) => /ignoring unexpected topic/.test(l)));
+        assert.ok(lines.some((l) => /readback: 2 retained/.test(l)));
+        // a late retained message after the readback ended is not collected
+        client.deliver('foo/status/late', '1', {retain: true});
+        assert.deepEqual(adapter.staleStatus(), []);
+        // a reconnect does not start it again
+        client.emit('connect');
+        assert.equal(client.subscribed.filter((t) => t === 'foo/status/#').length, 1);
+    });
+
+    test('off by default: nothing subscribed, readbackDone resolves at once, own status still reaches a sink', async () => {
+        const seen = [];
+        const {client, adapter} = setup({listen: {'+/status/#': (t) => seen.push(t)}});
+        client.emit('connect');
+        assert.ok(!client.subscribed.includes('foo/status/#'));
+        assert.deepEqual([...(await adapter.readbackDone()).keys()], []);
+        assert.deepEqual(adapter.staleStatus(), []);
+        client.deliver('foo/status/a', '1', {retain: true});
+        assert.deepEqual(seen, ['foo/status/a']);
+    });
+});
 
 describe('lifecycle', () => {
     test('connect publishes connected 1, info, subscriptions, discovery', () => {
