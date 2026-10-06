@@ -502,3 +502,82 @@ describe('subscriptions (0.7.0)', () => {
         assert.equal(plain.client.last('foo/status/x').payload, '1');
     });
 });
+
+describe('availability entries need a value first', () => {
+    const configTopic = 'homeassistant/device/foo2mqtt_foo_lamp/config';
+    // a bridge device whose availability is the bridge plus the device's own online item
+    const discovery = () => [
+        {device: {mf: 'ACME'}, components: {}},
+        {
+            id: 'foo2mqtt_foo_lamp',
+            device: {name: 'lamp', via_device: 'foo2mqtt_foo'},
+            availability: [
+                {t: 'foo/connected', val_tpl: "{{ 'online' if (value | int(0)) >= 2 else 'offline' }}"},
+                {t: 'foo/status/lamp/online', val_tpl: "{{ 'online' if value_json.val else 'offline' }}"},
+                {t: 'elsewhere/lamp/alive', val_tpl: "{{ 'online' }}"},
+            ],
+            components: {},
+        },
+    ];
+    const avty = (client) => JSON.parse(client.last(configTopic).payload);
+
+    test('an entry whose item has no value is left out, and added once the item is published', async () => {
+        const {client, adapter, lines} = setup({discovery, discoveryDelay: 10});
+        client.emit('connect');
+        const first = avty(client);
+        assert.deepEqual(
+            first.avty.map((e) => e.t),
+            ['foo/connected', 'elsewhere/lamp/alive'],
+        );
+        assert.equal(first.avty_mode, 'all');
+        assert.ok(lines.some((l) => /availability foo\/status\/lamp\/online has no value yet/.test(l)));
+
+        client.published.length = 0;
+        adapter.pubStatus('lamp/online', true);
+        const online = client.published.findIndex((p) => p.topic === 'foo/status/lamp/online');
+        assert.equal(online, 0); // the value goes out first
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        const again = client.published.findIndex((p) => p.topic === configTopic);
+        assert.ok(again > online);
+        assert.deepEqual(
+            avty(client).avty.map((e) => e.t),
+            ['foo/connected', 'foo/status/lamp/online', 'elsewhere/lamp/alive'],
+        );
+
+        // a later value does not re-announce again
+        client.published.length = 0;
+        adapter.pubStatus('lamp/online', false);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(client.last(configTopic), undefined);
+    });
+
+    test('an event (not retained) does not count as a value', async () => {
+        const {client, adapter} = setup({discovery, discoveryDelay: 10});
+        client.emit('connect');
+        adapter.pubStatus('lamp/online', true, {retain: false});
+        adapter.markDiscoveryDirty();
+        adapter.publishDiscovery();
+        assert.ok(!avty(client).avty.some((e) => e.t === 'foo/status/lamp/online'));
+    });
+
+    test('a value a previous run left retained counts (readback)', async () => {
+        const {client, adapter} = setup({discovery, readback: true, readbackQuiet: 10});
+        client.emit('connect');
+        client.deliver('foo/status/lamp/online', '{"val":true}', {retain: true});
+        await adapter.readbackDone();
+        adapter.markDiscoveryDirty();
+        adapter.publishDiscovery();
+        assert.ok(avty(client).avty.some((e) => e.t === 'foo/status/lamp/online'));
+    });
+
+    test('a device without own entries keeps the default <name>/connected availability', () => {
+        const {client} = setup();
+        client.emit('connect');
+        const payload = JSON.parse(client.last('homeassistant/device/foo2mqtt_foo/config').payload);
+        assert.deepEqual(
+            payload.avty.map((e) => e.t),
+            ['foo/connected'],
+        );
+        assert.equal(payload.avty_mode, undefined);
+    });
+});

@@ -438,6 +438,11 @@ export function discoveryModel({name, model, jsonPayloads}) {
   `dev_cla`, …). Stateless platforms (`button`, `notify`) get no state topic.
 - Availability comes from `<name>/connected` (`online` when ≥ 2; `availabilityMin: 1` for a device
   that is legitimately off while the bridge runs, e.g. a TV that wakes on LAN).
+- **An availability entry needs a value.** Home Assistant shows an entity as unavailable until each
+  of its availability topics has delivered one. The core therefore leaves an entry that points into
+  `<name>/status/…` out of the payload while that item has no retained value (not published in
+  this run, not found by the readback), and announces the device again as soon as the item is
+  published. `<name>/connected` and topics outside `<name>/` pass unchanged.
 - **Bridges** (one adapter, many physical devices — cul2mqtt, alexa-remote-mqtt): return an
   **array** of device blocks, each with its own `id` (`discoveryId('xyz2mqtt', name) + '_' +
 device`), `device.via_device` pointing at the bridge's id, and optionally its own
