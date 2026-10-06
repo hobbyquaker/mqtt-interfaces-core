@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.17.0
+
+### Changed
+
+- **An availability entry is left out of the Home Assistant discovery until its item has a
+  value.** Home Assistant shows an entity as unavailable until every availability topic of it has
+  delivered a value. A device whose `availability` names an item of the adapter's own status tree
+  that was never published — an `UNREACH` that never changed, an online flag not known yet — stayed
+  unavailable for good, although its state topics updated. The discovery now leaves such an entry
+  out while the item has no retained value (published in this run, or found by the readback), and
+  the first retained publish of the item announces the device again. `<name>/connected` and topics
+  outside `<name>/` pass unchanged. Found through a node-red-contrib-ccu user's report of the same
+  pattern there — thank you!
+
+### Docs
+
+- The README refers to the [mqtt-smarthome specification](https://github.com/mqtt-smarthome/mqtt-smarthome/blob/master/SPEC.md)
+  instead of repeating it, and names Home Assistant 2024.11 (not 2024.4) for device-based discovery.
+
 ## 0.16.0
 
 ### Added
