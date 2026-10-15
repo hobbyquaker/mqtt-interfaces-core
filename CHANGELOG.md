@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.1
+
+### Fixed
+
+- **A switch fed by a JSON boolean stayed unknown in Home Assistant** (lgtv2mqtt
+  [#21](https://github.com/hobbyquaker/lgtv2mqtt/issues/21), reported and diagnosed by
+  @daviddu26 — thank you!). The default state template `{{ value_json.val }}` rendered a boolean
+  the Python way, `False` / `True`, which never matched `stat_on: 'true'` / `stat_off: 'false'`.
+  The default template (`VALUE_TEMPLATE`, exported) now renders a boolean as `true` / `false` and
+  every other value unchanged. Entities with their own `val_tpl` are not affected.
+
 ## 0.17.0
 
 ### Changed
