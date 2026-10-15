@@ -1,7 +1,7 @@
 import {test, describe} from 'node:test';
 import assert from 'node:assert/strict';
 
-import {discoveryId, discoveryTopic, availability, entity, devicePayload} from '../lib/hadiscovery.js';
+import {discoveryId, discoveryTopic, availability, entity, devicePayload, VALUE_TEMPLATE} from '../lib/hadiscovery.js';
 
 const pkg = {name: 'foo2mqtt', version: '1.0.0', homepage: 'https://github.com/x/foo2mqtt'};
 
@@ -39,7 +39,7 @@ describe('entity', () => {
             uniq_id: 'foo2mqtt_foo_volume',
             name: 'Volume',
             stat_t: 'foo/status/volume',
-            val_tpl: '{{ value_json.val }}',
+            val_tpl: VALUE_TEMPLATE,
             cmd_t: 'foo/set/volume',
             ic: 'mdi:volume-high',
             min: 0,
@@ -48,7 +48,11 @@ describe('entity', () => {
     });
     test('json payloads (default) add a value template, plain payloads none, extra can override it', () => {
         const e = entity({...base, item: 'mute', platform: 'switch', label: 'Mute', jsonPayloads: true});
-        assert.equal(e.val_tpl, '{{ value_json.val }}');
+        assert.equal(e.val_tpl, VALUE_TEMPLATE);
+        // lgtv2mqtt #21: a JSON boolean must render as true/false, as stat_on/stat_off spell it, not as
+        // Python's True/False; every other value passes unchanged
+        assert.match(VALUE_TEMPLATE, /value_json\.val is boolean/);
+        assert.match(VALUE_TEMPLATE, /'true' if value_json\.val else 'false'/);
         const plain = entity({...base, item: 'mute', platform: 'switch', label: 'Mute', jsonPayloads: false});
         assert.equal(plain.val_tpl, undefined);
         const e2 = entity({
