@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.18.0
+
+### Added
+
+- **Home Assistant child devices** (HA 2026.11 and later): a discovery device block may carry
+  `children: [{id, name?, components}]`, published as `cdevs` in the device's discovery payload.
+  A component key may appear only once across the device and its children — `devicePayload()`
+  throws on a duplicate, a child without an id or an id used twice — so a component moved
+  between the device and a child under the same key keeps its entity. Without `children` the
+  payload is byte-identical to 0.17.1. For Homematic channels as child devices in hm2mqtt.js and
+  node-red-contrib-ccu.
+
 ## 0.17.1
 
 ### Fixed
