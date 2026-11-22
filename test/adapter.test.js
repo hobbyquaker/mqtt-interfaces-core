@@ -281,6 +281,39 @@ describe('lifecycle', () => {
     });
 });
 
+describe('discovery: child devices (0.18.0)', () => {
+    test('a device block passes its children through to cdevs', () => {
+        const {client} = setup({
+            discovery: () => ({
+                device: {mf: 'ACME'},
+                components: {
+                    rssi: entity({id: 'foo2mqtt_foo', name: 'foo', item: 'rssi', platform: 'sensor', label: 'RSSI'}),
+                },
+                children: [
+                    {
+                        id: 'foo2mqtt_foo_1',
+                        name: 'Channel 1',
+                        components: {
+                            ch1: entity({
+                                id: 'foo2mqtt_foo',
+                                name: 'foo',
+                                item: '1/state',
+                                platform: 'switch',
+                                label: 'State',
+                            }),
+                        },
+                    },
+                ],
+            }),
+        });
+        client.emit('connect');
+        const payload = JSON.parse(client.last('homeassistant/device/foo2mqtt_foo/config').payload);
+        assert.deepEqual(payload.cdevs[0].ids, ['foo2mqtt_foo_1']);
+        assert.equal(payload.cdevs[0].cmps.ch1.stat_t, 'foo/status/1/state');
+        assert.deepEqual(Object.keys(payload.cmps), ['rssi']);
+    });
+});
+
 describe('stats (0.8.0)', () => {
     test('statsPayload carries memory, cpu share and uptime; publishStats retains it under maintenance/stats', () => {
         const {adapter, client} = setup({}, {statsInterval: 0});

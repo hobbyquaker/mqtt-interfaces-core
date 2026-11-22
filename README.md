@@ -448,6 +448,18 @@ export function discoveryModel({name, model, jsonPayloads}) {
 device`), `device.via_device` pointing at the bridge's id, and optionally its own
   `availability` array (bridge availability + a per-device `<name>/status/<dev>/online` topic).
   Devices missing from a later result get their retained announcement cleared.
+- **Child devices** (Home Assistant **2026.11** and later): a device block may carry
+  `children: [{id, name?, components}]`, rendered as `cdevs: [{ids: [id], name, cmps}]` in the
+  same discovery payload — parts of one product, such as the channels of a multi-channel actuator.
+  A child has its own `id` (unique, not the device's), an optional `name` and its own entity map;
+  nothing else can be set for an MQTT child. **A component key may appear only once** across the
+  device's `components` and all children's (`devicePayload()` throws otherwise): moving a
+  component between the device and a child under the **same key** keeps its entity, unique_id and
+  entity_id. To remove a component, send it as a stub `{p: '<platform>'}` under its key once
+  (in `components` or in a child, wherever it is now). **Children have no `suggested_area`**:
+  they inherit the device's area until the user assigns another one in Home Assistant. Without
+  `children` the payload is exactly as before; an older Home Assistant may refuse a payload that
+  carries `cdevs`, so offer children as an option.
 - Re-publish when the model changes: list the items in `discoveryTriggers`, or call
   `markDiscoveryDirty()` + `publishDiscovery()` when items appear dynamically (debounce it).
 - Entity names in `label` are what the user sees; keep them short and device-relative
